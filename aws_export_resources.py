@@ -1,8 +1,41 @@
+# Change Logs
+# Version 1.0 (Initial Release)
+#   - Basic AWS resource export functionality
+#   - Support for EC2, RDS, Lambda, EFS, ECS, EKS, ElastiCache, Amazon MQ
+#   - Multi-profile support
+#   - Excel export with formatting
+#
+# Version 1.1 (Service Expansion)
+#   - Added Load Balancers (ALB, NLB, GLB) export
+#   - Added DynamoDB Tables with detailed configuration
+#   - Added CloudWatch Alarms and Log Groups
+#   - Added Transfer Family servers
+#   - Added AWS Personalize campaigns
+#   - Enhanced RDS with Aurora Clusters support
+#
+# Version 1.2 (Storage & Identity Services)
+#   - Added S3 Buckets with comprehensive details (versioning, encryption, public access)
+#   - Added S3 Glacier Vaults with notification settings
+#   - Added Cognito User Pools and Identity Pools
+#   - Improved error handling and resource details
+#
+# Version 1.3 (Performance & Threading - Planned)
+#   - Add parallel processing with threading for faster exports
+#   - Implement concurrent API calls for multiple services
+#   - Add progress indicators and better logging
+#   - Optimize memory usage for large environments
+
 import boto3
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 from datetime import datetime
 from botocore.exceptions import ClientError, ProfileNotFound
+import concurrent.futures
+from threading import Lock
+import time
+
+# Add this near the top of your script, after imports
+write_lock = Lock()
 
 # ==================== CONFIGURATION ====================
 # List your AWS profile names here
@@ -1301,9 +1334,21 @@ def export_cognito_identity_pools(ws, cognito_identity, header_font, header_fill
     
     apply_header_style(ws, header_font, header_fill, header_alignment)
 
+def export_with_error_handling(export_func, *args):
+    """
+    Wrapper function to handle errors in threaded exports
+    Returns (success, sheet_name, error_message)
+    """
+    try:
+        export_func(*args)
+        return (True, export_func.__name__, None)
+    except Exception as e:
+        return (False, export_func.__name__, str(e))
+
+
 def export_aws_resources_for_profile(profile_name):
     """
-    Export AWS resources for a specific profile to Excel.
+    Export AWS resources for a specific profile to Excel with parallel processing.
     """
     print(f"\n{'='*70}")
     print(f"Processing AWS Profile: {profile_name}")
@@ -1355,88 +1400,94 @@ def export_aws_resources_for_profile(profile_name):
         cognito_idp = session.client('cognito-idp')
         cognito_identity = session.client('cognito-identity')
         
-        # Export all resources
-        print("\nExporting resources:")
-        
-        # EC2 Instances
+        # Pre-create all worksheets (thread-safe)
+        print("\n  - Creating worksheets...")
         ws_ec2 = wb.create_sheet("EC2 Instances")
-        export_ec2_instances(ws_ec2, ec2, header_font, header_fill, header_alignment)
-        
-        # RDS Instances
         ws_rds = wb.create_sheet("RDS Instances")
-        export_rds_instances(ws_rds, rds, ec2, header_font, header_fill, header_alignment)
-        
-        # RDS Clusters (Aurora) (NEW)
         ws_rds_clusters = wb.create_sheet("RDS Clusters")
-        export_rds_clusters(ws_rds_clusters, rds, ec2, header_font, header_fill, header_alignment)
-        
-        # Lambda Functions
         ws_lambda = wb.create_sheet("Lambda Functions")
-        export_lambda_functions(ws_lambda, lambda_client, ec2, header_font, header_fill, header_alignment)
-        
-        # EFS File Systems
         ws_efs = wb.create_sheet("EFS File Systems")
-        export_efs_filesystems(ws_efs, efs, header_font, header_fill, header_alignment)
-        
-        # ECS Services
         ws_ecs = wb.create_sheet("ECS Services")
-        export_ecs_services(ws_ecs, ecs, ec2, header_font, header_fill, header_alignment)
-        
-        # EKS Clusters
         ws_eks = wb.create_sheet("EKS Clusters")
-        export_eks_clusters(ws_eks, eks, ec2, header_font, header_fill, header_alignment)
-        
-        # ElastiCache
         ws_elasticache = wb.create_sheet("ElastiCache")
-        export_elasticache_clusters(ws_elasticache, elasticache, ec2, header_font, header_fill, header_alignment)
-        
-        # Amazon MQ
         ws_mq = wb.create_sheet("Amazon MQ")
-        export_mq_brokers(ws_mq, mq, ec2, header_font, header_fill, header_alignment)
-        
-        # Load Balancers (NEW)
         ws_elb = wb.create_sheet("Load Balancers")
-        export_load_balancers(ws_elb, elbv2, ec2, header_font, header_fill, header_alignment)
-        
-        # DynamoDB Tables (NEW)
         ws_dynamodb = wb.create_sheet("DynamoDB Tables")
-        export_dynamodb_tables(ws_dynamodb, dynamodb, header_font, header_fill, header_alignment)
-        
-        # CloudWatch Alarms (NEW)
         ws_cw_alarms = wb.create_sheet("CloudWatch Alarms")
-        export_cloudwatch_alarms(ws_cw_alarms, cloudwatch, header_font, header_fill, header_alignment)
-        
-        # CloudWatch Log Groups (NEW)
         ws_cw_logs = wb.create_sheet("CloudWatch Logs")
-        export_cloudwatch_log_groups(ws_cw_logs, logs, header_font, header_fill, header_alignment)
-        
-        # Transfer Family (NEW)
         ws_transfer = wb.create_sheet("Transfer Family")
-        export_transfer_family(ws_transfer, transfer, ec2, header_font, header_fill, header_alignment)
-        
-        # AWS Personalize (NEW)
         ws_personalize = wb.create_sheet("Personalize")
-        export_personalize(ws_personalize, personalize, header_font, header_fill, header_alignment)
-
-        # S3 Buckets
         ws_s3 = wb.create_sheet("S3 Buckets")
-        export_s3_buckets(ws_s3, s3, header_font, header_fill, header_alignment)
-
-        # S3 Glacier Vaults
         ws_glacier = wb.create_sheet("Glacier Vaults")
-        export_s3_glacier_vaults(ws_glacier, glacier, header_font, header_fill, header_alignment)
-
-        # Cognito User Pools
         ws_cognito_users = wb.create_sheet("Cognito User Pools")
-        export_cognito_user_pools(ws_cognito_users, cognito_idp, header_font, header_fill, header_alignment)
-
-        # Cognito Identity Pools
         ws_cognito_identity = wb.create_sheet("Cognito Identity Pools")
-        export_cognito_identity_pools(ws_cognito_identity, cognito_identity, header_font, header_fill, header_alignment)
-        
-        # VPC Summary
         ws_vpc = wb.create_sheet("VPC Summary")
-        export_vpc_summary(ws_vpc, ec2, region, header_font, header_fill, header_alignment)
+        
+        # Define export tasks - each tuple contains (function, worksheet, *args)
+        export_tasks = [
+            (export_ec2_instances, ws_ec2, ec2, header_font, header_fill, header_alignment),
+            (export_rds_instances, ws_rds, rds, ec2, header_font, header_fill, header_alignment),
+            (export_rds_clusters, ws_rds_clusters, rds, ec2, header_font, header_fill, header_alignment),
+            (export_lambda_functions, ws_lambda, lambda_client, ec2, header_font, header_fill, header_alignment),
+            (export_efs_filesystems, ws_efs, efs, header_font, header_fill, header_alignment),
+            (export_ecs_services, ws_ecs, ecs, ec2, header_font, header_fill, header_alignment),
+            (export_eks_clusters, ws_eks, eks, ec2, header_font, header_fill, header_alignment),
+            (export_elasticache_clusters, ws_elasticache, elasticache, ec2, header_font, header_fill, header_alignment),
+            (export_mq_brokers, ws_mq, mq, ec2, header_font, header_fill, header_alignment),
+            (export_load_balancers, ws_elb, elbv2, ec2, header_font, header_fill, header_alignment),
+            (export_dynamodb_tables, ws_dynamodb, dynamodb, header_font, header_fill, header_alignment),
+            (export_cloudwatch_alarms, ws_cw_alarms, cloudwatch, header_font, header_fill, header_alignment),
+            (export_cloudwatch_log_groups, ws_cw_logs, logs, header_font, header_fill, header_alignment),
+            (export_transfer_family, ws_transfer, transfer, ec2, header_font, header_fill, header_alignment),
+            (export_personalize, ws_personalize, personalize, header_font, header_fill, header_alignment),
+            (export_s3_buckets, ws_s3, s3, header_font, header_fill, header_alignment),
+            (export_s3_glacier_vaults, ws_glacier, glacier, header_font, header_fill, header_alignment),
+            (export_cognito_user_pools, ws_cognito_users, cognito_idp, header_font, header_fill, header_alignment),
+            (export_cognito_identity_pools, ws_cognito_identity, cognito_identity, header_font, header_fill, header_alignment),
+            (export_vpc_summary, ws_vpc, ec2, region, header_font, header_fill, header_alignment),
+        ]
+        
+        # Execute exports in parallel
+        print("\nExporting resources (parallel processing)...")
+        start_time = time.time()
+        
+        # Adjust max_workers based on your needs (5-10 is optimal to avoid AWS rate limits)
+        max_workers = 8
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all tasks
+            future_to_task = {
+                executor.submit(export_with_error_handling, *task): task[0].__name__
+                for task in export_tasks
+            }
+            
+            # Track results
+            successful_exports = []
+            failed_exports = []
+            
+            # Process completed tasks as they finish
+            for future in concurrent.futures.as_completed(future_to_task):
+                task_name = future_to_task[future]
+                try:
+                    success, func_name, error_msg = future.result()
+                    if success:
+                        successful_exports.append(func_name)
+                        print(f"  ✓ Completed: {func_name}")
+                    else:
+                        failed_exports.append((func_name, error_msg))
+                        print(f"  ✗ Failed: {func_name} - {error_msg}")
+                except Exception as e:
+                    failed_exports.append((task_name, str(e)))
+                    print(f"  ✗ Exception in {task_name}: {e}")
+        
+        elapsed_time = time.time() - start_time
+        print(f"\n  - Export completed in {elapsed_time:.2f} seconds")
+        print(f"  - Successful: {len(successful_exports)}/{len(export_tasks)}")
+        
+        if failed_exports:
+            print(f"  - Failed exports:")
+            for func_name, error in failed_exports:
+                print(f"    • {func_name}: {error}")
         
         # Auto-adjust column widths for all sheets
         print("\n  - Adjusting column widths...")
@@ -1461,7 +1512,7 @@ def export_aws_resources_for_profile(profile_name):
         wb.save(output_file)
         print(f"\n✅ Export complete!")
         print(f"📊 File: {output_file}")
-        print(f"📁 Sheets: {', '.join([ws.title for ws in wb.worksheets])}")
+        print(f"📑 Sheets: {len(wb.worksheets)}")
         
         return True
         
@@ -1477,6 +1528,69 @@ def export_aws_resources_for_profile(profile_name):
         import traceback
         traceback.print_exc()
         return False
+
+
+# Optional: Add parallel profile processing
+def main_parallel_profiles():
+    """
+    Process multiple profiles in parallel (use with caution - high AWS API load)
+    """
+    import sys
+    
+    if len(sys.argv) > 1:
+        profiles_to_process = sys.argv[1:]
+    else:
+        profiles_to_process = AWS_PROFILES
+    
+    print(f"\n{'='*70}")
+    print(f"AWS Multi-Profile Resource Exporter (PARALLEL MODE)")
+    print(f"{'='*70}")
+    print(f"Total profiles to process: {len(profiles_to_process)}")
+    
+    start_time = time.time()
+    
+    # Process profiles in parallel (max 3 at a time to avoid overwhelming AWS API)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        future_to_profile = {
+            executor.submit(export_aws_resources_for_profile, profile): profile
+            for profile in profiles_to_process
+        }
+        
+        successful = []
+        failed = []
+        
+        for future in concurrent.futures.as_completed(future_to_profile):
+            profile = future_to_profile[future]
+            try:
+                if future.result():
+                    successful.append(profile)
+                else:
+                    failed.append(profile)
+            except Exception as e:
+                print(f"Error processing profile {profile}: {e}")
+                failed.append(profile)
+    
+    elapsed_time = time.time() - start_time
+    
+    # Summary
+    print(f"\n{'='*70}")
+    print(f"SUMMARY")
+    print(f"{'='*70}")
+    print(f"Total time: {elapsed_time:.2f} seconds")
+    print(f"✅ Successfully processed: {len(successful)} profile(s)")
+    if successful:
+        for profile in successful:
+            print(f"   - {profile}")
+    
+    if failed:
+        print(f"\n❌ Failed to process: {len(failed)} profile(s)")
+        for profile in failed:
+            print(f"   - {profile}")
+    
+    print(f"\n{'='*70}")
+    print(f"All exports completed!")
+    print(f"{'='*70}\n")
+
 
 def main():
     """Main function to process multiple AWS profiles"""
