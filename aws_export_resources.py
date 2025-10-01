@@ -26,8 +26,8 @@
 #   pip install boto3 openpyxl
 #
 # Usage:
-#   python main9.py                    # Use configured profiles
-#   python main9.py profile1 profile2  # Use specific profiles
+#   python aws_export_resources.py                    # Use configured profiles
+#   python aws_export_resources.py profile1 profile2  # Use specific profiles
 #
 # GitHub: https://github.com/zendz/aws-export-resources/wiki
 # Documentation: https://github.com/zendz/aws-export-resources/wiki

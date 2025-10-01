@@ -52,13 +52,13 @@ A Python tool to export AWS resources across multiple services and regions to an
 ### Basic Usage
 
 ```bash
-python main9.py
+python aws_export_resources.py
 ```
 
 ### With Custom Profile
 
 ```bash
-AWS_PROFILE=your-profile python main9.py
+AWS_PROFILE=your-profile python aws_export_resources.py
 ```
 
 ### Command Line Options
