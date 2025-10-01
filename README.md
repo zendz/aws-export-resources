@@ -1,15 +1,17 @@
-# AWS Export Resources
+# AWS Export Resources v2.0.0
 
-A Python tool to ex3. Configure your AWS credentials:
-   ```bash
-   aws configure
-   ```
-   Or use environment variables, IAM roles, or AWS profiles.
+A comprehensive Python tool to export AWS resources across multiple services and regions to Excel spreadsheets for inventory management, compliance reporting, and cloud governance.
 
-4. Test your configuration:
-   ```bash
-   python3 test_config.py
-   ```AWS resources across multiple services and regions to an Excel spreadsheet for inventory management and compliance reporting.
+## 🚀 **What's New in v2.0.0**
+
+**Major Release**: Complete project restructure with professional package organization, enhanced CLI interface, and improved maintainability.
+
+### **Key Improvements**
+- **🏗️ Professional Structure**: Organized source code into `src/` package
+- **🖥️ Enhanced CLI**: New command-line interface with help and version support  
+- **📦 Package Installation**: Full setuptools support for easy installation
+- **🎯 Multiple Entry Points**: Flexible execution options for different use cases
+- **⚙️ Centralized Config**: All settings moved to configuration files
 
 ## Features
 
@@ -70,24 +72,38 @@ This tool exports the following AWS resources across multiple profiles:
 
 ## Usage
 
-### Basic Usage
+### Quick Start
 
 ```bash
-python3 aws_export_resources.py
+# Using the convenient run script
+python3 run.py
+
+# Or using the main entry point
+python3 main.py
+
+# Or running directly from src directory
+cd src && python3 aws_export_resources.py
 ```
 
-### With Custom Profile
+### With Custom Profiles
 
 ```bash
-AWS_PROFILE=your-profile python3 aws_export_resources.py
+# Use specific AWS profiles
+python3 run.py profile1 profile2
+
+# Use environment variable
+AWS_PROFILE=your-profile python3 run.py
 ```
 
-### Command Line Options
+### Installation as Package
 
-The tool supports various configuration options through environment variables or code modification:
+```bash
+# Install in development mode
+pip3 install -e .
 
-- `AWS_PROFILE`: AWS profile to use
-- `AWS_REGION`: Specific region to scan (default: all regions)
+# Then use the command line tool
+aws-export-resources
+```
 - `OUTPUT_FILE`: Custom output filename
 
 ## Output

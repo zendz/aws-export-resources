@@ -6,9 +6,9 @@
 # Organization: Gosoft (Thailand) Co., Ltd.
 # Position: Expert DevOps Engineer, Data Science and Data Engineering Team
 # Contact: GitHub Issues Only - https://github.com/zendz/aws-export-resources/issues
-# Version: 1.5.5
+# Version: Dynamic (from config.py)
 # Created: September 20, 2025
-# Last Updated: October 01, 2025
+# Last Updated: October 01, 2025 (v2.0.0 - Major restructure)
 # License: MIT License
 # 
 # Description:
@@ -16,6 +16,10 @@
 #   about AWS resources across multiple profiles to Excel format with parallel
 #   processing capabilities and advanced tag management. Supports 25+ AWS services
 #   including EC2, RDS, Lambda, ECS, EKS, S3, API Gateway, ECR, and more.
+#
+#   Version 2.0.0 introduces a complete project restructure with professional
+#   Python package organization, enhanced CLI interface, and improved maintainability.
+#   The tool now supports multiple entry points and package installation.
 #
 # Requirements:
 #   - Python 3.7+
@@ -25,9 +29,17 @@
 #
 # Installation:
 #   pip3 install boto3 openpyxl
+#   OR
+#   pip3 install -e .                                   # Install as package
 #
-# Usage:
-#   python3 aws_export_resources.py                    # Use configured profiles
+# Usage (v2.0.0+):
+#   python3 aws-export.py                              # Enhanced CLI (recommended)
+#   python3 run.py                                     # Simple entry point
+#   python3 main.py                                    # Basic entry point
+#   cd src && python3 aws_export_resources.py          # Direct execution
+#   aws-export-resources                               # After package installation
+#
+# Usage (Legacy):
 #   python3 aws_export_resources.py profile1 profile2  # Use specific profiles
 #
 # GitHub: https://github.com/zendz/aws-export-resources/wiki
@@ -47,9 +59,13 @@ import re
 
 # Import configuration
 from config import (
+    VERSION,
+    TOOL_NAME,
     AWS_PROFILES,
     COMMON_TAG_KEYS,
+    OUTPUT_FILE_PREFIX,
     MAX_WORKERS,
+    MAX_PROFILE_WORKERS,
     ENABLED_SERVICES,
     AWS_REGIONS,
     EXCEL_STYLING,
@@ -2012,16 +2028,28 @@ def export_aws_resources_for_profile(profile_name):
         
         # Generate filename with timestamp
         timestamp = datetime.now().strftime('%y%m%d-%H%M')
-        output_file = f'aws_resources_{timestamp}_{account_id}-{account_alias}.xlsx'
+        output_file = f'{OUTPUT_FILE_PREFIX}_{timestamp}_{account_id}-{account_alias}.xlsx'
         
         # Create a new Excel workbook
         wb = openpyxl.Workbook()
         wb.remove(wb.active)  # Remove default sheet
         
-        # Header style
-        header_font = Font(bold=True, color="FFFFFF")
-        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
-        header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        # Header style from configuration
+        header_font = Font(
+            bold=EXCEL_STYLING['header_font']['bold'],
+            color=EXCEL_STYLING['header_font']['color'],
+            size=EXCEL_STYLING['header_font']['size']
+        )
+        header_fill = PatternFill(
+            start_color=EXCEL_STYLING['header_fill']['start_color'],
+            end_color=EXCEL_STYLING['header_fill']['start_color'],
+            fill_type=EXCEL_STYLING['header_fill']['fill_type']
+        )
+        header_alignment = Alignment(
+            horizontal=EXCEL_STYLING['header_alignment']['horizontal'],
+            vertical=EXCEL_STYLING['header_alignment']['vertical'],
+            wrap_text=True
+        )
         
         # Initialize AWS clients
         print("\n  - Initializing AWS clients...")
@@ -2108,10 +2136,8 @@ def export_aws_resources_for_profile(profile_name):
         print("\nExporting resources (parallel processing)...")
         start_time = time.time()
         
-        # Adjust max_workers based on your needs (5-10 is optimal to avoid AWS rate limits)
-        max_workers = 8
-        
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Use configured max_workers to avoid AWS rate limits
+        with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
             # Submit all tasks
             future_to_task = {
                 executor.submit(export_with_error_handling, *task): task[0].__name__
@@ -2206,8 +2232,8 @@ def main_parallel_profiles():
     
     start_time = time.time()
     
-    # Process profiles in parallel (max 3 at a time to avoid overwhelming AWS API)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+    # Process profiles in parallel (configured limit to avoid overwhelming AWS API)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_PROFILE_WORKERS) as executor:
         future_to_profile = {
             executor.submit(export_aws_resources_for_profile, profile): profile
             for profile in profiles_to_process
@@ -2262,7 +2288,7 @@ def main():
         print(f"Using profiles from configuration: {', '.join(profiles_to_process)}")
     
     print(f"\n{'='*70}")
-    print(f"AWS Multi-Profile Resource Exporter")
+    print(f"AWS Multi-Profile Resource Exporter - {TOOL_NAME} v{VERSION}")
     print(f"{'='*70}")
     print(f"Total profiles to process: {len(profiles_to_process)}")
     

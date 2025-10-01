@@ -5,6 +5,73 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2025-10-01
+
+### MAJOR RELEASE: Complete Project Restructure ⚡
+
+This major version release introduces a complete architectural overhaul with a professional Python package structure, enhanced CLI interface, and improved maintainability.
+
+### 🎯 **Breaking Changes**
+- **Project Structure**: Complete reorganization into `src/` package structure
+- **Entry Points**: New CLI interface and multiple execution methods
+- **Configuration**: Centralized configuration management with better organization
+- **File Organization**: Separated source code, tests, examples, and outputs
+
+### 🚀 **Added**
+- **Professional Package Structure**:
+  - `src/` directory containing all source code as proper Python package
+  - `tests/` directory for all test files and utilities
+  - `examples/` directory for configuration examples
+  - `outputs/` directory for generated Excel files
+  - `docs/` directory for enhanced documentation
+
+- **Enhanced CLI Interface** (`aws-export.py`):
+  - `--help` flag with comprehensive usage information
+  - `--version` flag for version information
+  - `--list-profiles` flag to show available AWS profiles
+  - Better error handling and user feedback
+  - Professional command-line experience
+
+- **Multiple Entry Points**:
+  - `aws-export.py` - Enhanced CLI with help system
+  - `run.py` - Simple entry point with error handling  
+  - `main.py` - Basic entry point for compatibility
+  - Direct execution support from `src/` directory
+
+- **Package Installation Support**:
+  - `setup.py` for proper Python package installation
+  - `pip install -e .` development mode support
+  - `aws-export-resources` command-line tool after installation
+  - `MANIFEST.in` for proper package distribution
+
+### 🔧 **Enhanced**
+- **Configuration Management**:
+  - Moved all hardcoded values to centralized configuration
+  - `MAX_WORKERS` and `MAX_PROFILE_WORKERS` from config
+  - `OUTPUT_FILE_PREFIX` configurable filename prefix
+  - `EXCEL_STYLING` centralized formatting configuration
+  - Version information managed in dedicated `_version.py`
+
+- **Code Organization**:
+  - Clean separation between source code and configuration
+  - Proper Python package structure with `__init__.py` files
+  - Professional project layout following Python best practices
+  - Better maintainability and extensibility
+
+### 📈 **Migration Guide**
+- **Old usage**: `python3 aws_export_resources.py`
+- **New usage**: 
+  - `python3 aws-export.py` (recommended - enhanced CLI)
+  - `python3 run.py` (simple alternative)
+  - `pip install -e . && aws-export-resources` (package installation)
+
+### 🛠️ **Technical Improvements**
+- Version management centralized in `src/_version.py`
+- Configuration imports streamlined and organized
+- Better error handling across all entry points
+- Enhanced documentation and project structure guide
+- Proper package manifest for distribution
+
 ## [1.5.5] - 2025-10-01
 
 ### Added
