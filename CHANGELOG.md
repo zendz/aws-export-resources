@@ -5,11 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2025-10-01
+
+### 🐛 **Critical Bug Fixes**
+- **Tag Extraction Issues**: Fixed missing or N/A tag values for multiple AWS services
+  - **Lambda Functions**: Fixed tag extraction using `list_tags()` API instead of function metadata
+  - **EFS File Systems**: Added missing tag extraction using `list_tags_for_resource()`
+  - **ECS Services**: Added missing tag extraction using `list_tags_for_resource()`
+  - **EKS Clusters**: Fixed tag conversion from dict to standard format
+  - **ElastiCache Clusters**: Added tag extraction using `list_tags_for_resource()`
+  - **Amazon MQ Brokers**: Added tag extraction using `list_tags()`
+  - **CloudWatch Log Groups**: Added tag extraction using `list_tags_log_group()`
+  - **KMS Keys**: Verified existing tag extraction (already working correctly)
+
+### 🔧 **Technical Improvements**
+- **Error Handling**: Consistent error handling pattern across all tag extraction APIs
+- **Tag Format Standardization**: Proper conversion between dict and list formats for different AWS services
+- **Output Integration**: All services now properly include tag values in Excel output
+- **Headers Alignment**: Updated ElastiCache headers to match new data columns
+
 ## [2.0.0] - 2025-10-01
 
 ### MAJOR RELEASE: Complete Project Restructure ⚡
 
 This major version release introduces a complete architectural overhaul with a professional Python package structure, enhanced CLI interface, and improved maintainability.
+
+### 🐛 **Critical Bug Fixes**
+- **Tag Extraction Issues**: Fixed missing or N/A tag values for multiple AWS services
+  - **Lambda Functions**: Fixed tag extraction using `list_tags()` API instead of function metadata
+  - **EFS File Systems**: Added missing tag extraction using `list_tags_for_resource()`
+  - **ECS Services**: Added missing tag extraction using `list_tags_for_resource()`
+  - **EKS Clusters**: Fixed tag conversion from dict to standard format
+  - **ElastiCache Clusters**: Added tag extraction using `list_tags_for_resource()`
+  - **Amazon MQ Brokers**: Added tag extraction using `list_tags()`
+  - **CloudWatch Log Groups**: Added tag extraction using `list_tags_log_group()`
+  - **KMS Keys**: Verified existing tag extraction (already working correctly)
 
 ### 🎯 **Breaking Changes**
 - **Project Structure**: Complete reorganization into `src/` package structure

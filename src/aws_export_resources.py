@@ -8,7 +8,7 @@
 # Contact: GitHub Issues Only - https://github.com/zendz/aws-export-resources/issues
 # Version: Dynamic (from config.py)
 # Created: September 20, 2025
-# Last Updated: October 01, 2025 (v2.0.0 - Major restructure)
+# Last Updated: October 01, 2025 (v2.0.1 - Tag extraction fixes)
 # License: MIT License
 # 
 # Description:
@@ -489,8 +489,12 @@ def export_lambda_functions(ws, lambda_client, ec2, header_font, header_fill, he
                 subnet_names = []
             
             # Get tags for Lambda function
-            # Note: Lambda tags come as dict {'Key': 'Value'}, need to convert
-            lambda_tags = [{'Key': k, 'Value': v} for k, v in func.get('Tags', {}).items()]
+            # Lambda tags need to be fetched separately using list_tags
+            try:
+                tags_response = lambda_client.list_tags(Resource=func['FunctionArn'])
+                lambda_tags = [{'Key': k, 'Value': v} for k, v in tags_response.get('Tags', {}).items()]
+            except Exception:
+                lambda_tags = []
             tag_values = get_tag_values(lambda_tags)
             
             # Parse create date from LastModified (creation time for Lambda)
@@ -549,6 +553,14 @@ def export_efs_filesystems(ws, efs, header_font, header_fill, header_alignment):
             
             size_gb = fs.get('SizeInBytes', {}).get('Value', 0) / (1024**3)
             
+            # Get tags for EFS file system
+            try:
+                tags_response = efs.list_tags_for_resource(ResourceId=fs['FileSystemId'])
+                efs_tags = tags_response.get('Tags', [])
+            except Exception:
+                efs_tags = []
+            tag_values = get_tag_values(efs_tags)
+            
             ws.append([
                 fs['FileSystemId'],
                 fs_name,
@@ -562,7 +574,7 @@ def export_efs_filesystems(ws, efs, header_font, header_fill, header_alignment):
                 ', '.join(vpc_ids),
                 ', '.join(subnet_ids),
                 ', '.join(azs)
-            ])
+            ] + tag_values)
     except Exception as e:
         print(f"    Error: {e}")
     
@@ -657,6 +669,14 @@ def export_ecs_services(ws, ecs, ec2, header_font, header_fill, header_alignment
                     if hasattr(create_date, 'strftime'):
                         create_date = create_date.strftime('%Y-%m-%d %H:%M:%S')
                     
+                    # Get tags for ECS service
+                    try:
+                        tags_response = ecs.list_tags_for_resource(resourceArn=service['serviceArn'])
+                        ecs_tags = tags_response.get('tags', [])
+                    except Exception:
+                        ecs_tags = []
+                    tag_values = get_tag_values(ecs_tags)
+                    
                     ws.append([
                         cluster_name,
                         service['serviceName'],
@@ -675,7 +695,7 @@ def export_ecs_services(ws, ecs, ec2, header_font, header_fill, header_alignment
                         load_balancers if load_balancers else 'N/A',
                         service['serviceArn'],
                         create_date
-                    ])
+                    ] + tag_values)
     except Exception as e:
         print(f"    Error: {e}")
     
@@ -802,6 +822,12 @@ def export_eks_clusters(ws, eks, ec2, header_font, header_fill, header_alignment
             subnet_ids = cluster.get('resourcesVpcConfig', {}).get('subnetIds', [])
             security_group_ids = cluster.get('resourcesVpcConfig', {}).get('securityGroupIds', [])
             
+            # Get tags for EKS cluster
+            eks_tags = cluster.get('tags', {})
+            # Convert dict to list format for tag processing
+            tag_list = [{'Key': k, 'Value': v} for k, v in eks_tags.items()]
+            tag_values = get_tag_values(tag_list)
+            
             ws.append([
                 cluster['name'],
                 cluster.get('version', 'N/A'),
@@ -814,7 +840,7 @@ def export_eks_clusters(ws, eks, ec2, header_font, header_fill, header_alignment
                 ', '.join(subnet_ids) if subnet_ids else 'N/A',
                 ', '.join(security_group_ids) if security_group_ids else 'N/A',
                 cluster.get('roleArn', 'N/A')
-            ])
+            ] + tag_values)
     except Exception as e:
         print(f"    Error: {e}")
     
@@ -828,7 +854,7 @@ def export_elasticache_clusters(ws, elasticache, ec2, header_font, header_fill, 
         'Cluster ID', 'Engine', 'Engine Version', 'Node Type',
         'Status', 'Num Cache Nodes', 'Preferred AZ',
         'VPC ID', 'VPC Name', 'VPC CIDR', 'Subnet Group',
-        'Security Groups', 'Endpoint', 'ARN', 'Create Date'
+        'Security Groups', 'Endpoint', 'ARN', 'Encryption'
     ] + get_tag_columns()
     ws.append(headers)
     
@@ -861,6 +887,16 @@ def export_elasticache_clusters(ws, elasticache, ec2, header_font, header_fill, 
                 except:
                     pass
             
+            # Get tags for ElastiCache replication group
+            try:
+                tags_response = elasticache.list_tags_for_resource(
+                    ResourceName=cluster['ARN']
+                )
+                elasticache_tags = tags_response.get('TagList', [])
+            except Exception:
+                elasticache_tags = []
+            tag_values = get_tag_values(elasticache_tags)
+            
             ws.append([
                 cluster['ReplicationGroupId'],
                 'Redis',
@@ -874,8 +910,10 @@ def export_elasticache_clusters(ws, elasticache, ec2, header_font, header_fill, 
                 vpc_info['cidr'],
                 subnet_group_name,
                 ', '.join(security_groups) if security_groups else 'N/A',
-                endpoint
-            ])
+                endpoint,
+                cluster.get('ARN', 'N/A'),
+                cluster.get('AtRestEncryptionEnabled', 'N/A')
+            ] + tag_values)
         
         memcached_clusters = elasticache.describe_cache_clusters()
         for cluster in memcached_clusters.get('CacheClusters', []):
@@ -897,6 +935,16 @@ def export_elasticache_clusters(ws, elasticache, ec2, header_font, header_fill, 
                 security_groups = [sg['SecurityGroupId'] for sg in cluster.get('SecurityGroups', [])]
                 endpoint = cluster.get('ConfigurationEndpoint', {}).get('Address', 'N/A')
                 
+                # Get tags for ElastiCache cluster
+                try:
+                    tags_response = elasticache.list_tags_for_resource(
+                        ResourceName=f"arn:aws:elasticache:{cluster.get('PreferredAvailabilityZone', 'us-east-1')[:-1]}:*:cluster:{cluster['CacheClusterId']}"
+                    )
+                    elasticache_tags = tags_response.get('TagList', [])
+                except Exception:
+                    elasticache_tags = []
+                tag_values = get_tag_values(elasticache_tags)
+                
                 ws.append([
                     cluster['CacheClusterId'],
                     cluster['Engine'],
@@ -910,8 +958,10 @@ def export_elasticache_clusters(ws, elasticache, ec2, header_font, header_fill, 
                     vpc_info['cidr'],
                     subnet_group_name,
                     ', '.join(security_groups) if security_groups else 'N/A',
-                    endpoint
-                ])
+                    endpoint,
+                    'N/A',  # ARN placeholder
+                    'N/A'   # Encryption placeholder
+                ] + tag_values)
     except Exception as e:
         print(f"    Error: {e}")
     
@@ -953,6 +1003,14 @@ def export_mq_brokers(ws, mq, ec2, header_font, header_fill, header_alignment):
                 if instance.get('Endpoints'):
                     endpoints.extend(instance['Endpoints'])
             
+            # Get tags for Amazon MQ broker
+            try:
+                tags_response = mq.list_tags(ResourceArn=broker['BrokerArn'])
+                mq_tags = [{'Key': k, 'Value': v} for k, v in tags_response.get('Tags', {}).items()]
+            except Exception:
+                mq_tags = []
+            tag_values = get_tag_values(mq_tags)
+            
             ws.append([
                 broker['BrokerName'],
                 broker['BrokerId'],
@@ -967,7 +1025,7 @@ def export_mq_brokers(ws, mq, ec2, header_font, header_fill, header_alignment):
                 ', '.join(subnet_ids) if subnet_ids else 'N/A',
                 ', '.join(security_groups) if security_groups else 'N/A',
                 '\n'.join(endpoints[:3]) if endpoints else 'N/A'
-            ])
+            ] + tag_values)
     except Exception as e:
         print(f"    Error: {e}")
     
@@ -1147,6 +1205,14 @@ def export_cloudwatch_log_groups(ws, logs, header_font, header_fill, header_alig
                 
                 creation_time = datetime.fromtimestamp(log_group['creationTime'] / 1000).strftime('%Y-%m-%d %H:%M:%S')
                 
+                # Get tags for CloudWatch Log Group
+                try:
+                    tags_response = logs.list_tags_log_group(logGroupName=log_group['logGroupName'])
+                    log_tags = [{'Key': k, 'Value': v} for k, v in tags_response.get('tags', {}).items()]
+                except Exception:
+                    log_tags = []
+                tag_values = get_tag_values(log_tags)
+                
                 ws.append([
                     log_group['logGroupName'],
                     creation_time,
@@ -1154,7 +1220,7 @@ def export_cloudwatch_log_groups(ws, logs, header_font, header_fill, header_alig
                     f"{stored_mb:.2f} MB",
                     log_group.get('metricFilterCount', 0),
                     log_group.get('kmsKeyId', 'N/A')
-                ])
+                ] + tag_values)
     except Exception as e:
         print(f"    Error: {e}")
     

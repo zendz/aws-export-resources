@@ -1,10 +1,15 @@
-# AWS Export Resources v2.0.0
+# AWS Export Resources v2.0.1
 
 A comprehensive Python tool to export AWS resources across multiple services and regions to Excel spreadsheets for inventory management, compliance reporting, and cloud governance.
 
-## 🚀 **What's New in v2.0.0**
+## 🚀 **What's New in v2.0.1**
 
-**Major Release**: Complete project restructure with professional package organization, enhanced CLI interface, and improved maintainability.
+**Patch Release**: Critical bug fixes for tag extraction across 8 AWS services.
+
+### **🐛 Critical Bug Fixes**
+- **🏷️ Tag Extraction**: Fixed missing or N/A tag values for Lambda, EFS, ECS, EKS, ElastiCache, Amazon MQ, and CloudWatch Logs
+- **🔧 API Integration**: Proper use of service-specific tag APIs instead of metadata
+- **📊 Data Quality**: All tag columns now populate correctly in Excel exports
 
 ### **Key Improvements**
 - **🏗️ Professional Structure**: Organized source code into `src/` package

@@ -18,7 +18,7 @@ sys.path.insert(0, src_dir)
 def show_help():
     """Display help information"""
     help_text = """
-AWS Export Resources Tool - v2.0.0
+AWS Export Resources Tool - v2.0.1
 
 DESCRIPTION:
     A comprehensive AWS resource inventory tool that exports detailed information
@@ -66,7 +66,7 @@ def show_version():
         print(f"{TOOL_NAME} v{VERSION}")
         print(f"Author: {AUTHOR}")
     except ImportError:
-        print("AWS Export Resources v2.0.0")
+        print("AWS Export Resources v2.0.1")
 
 
 def list_profiles():
