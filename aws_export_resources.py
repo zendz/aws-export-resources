@@ -7,14 +7,9 @@ from botocore.exceptions import ClientError, ProfileNotFound
 # ==================== CONFIGURATION ====================
 # List your AWS profile names here
 AWS_PROFILES = [
-    'sdsprd',
-    'sssdev'
-    # 'caidev',
-    # 'caiprd',
-    # 'copcosdev',
-    # 'copcosprd',
-    # 'aoldev',
-    # 'aolprd'
+    'production',
+    'staging',
+    'dev'
 ]
 
 # You can also pass profiles as command line arguments
@@ -204,6 +199,80 @@ def export_rds_instances(ws, rds, ec2, header_font, header_fill, header_alignmen
                 subnet_group_name,
                 subnet_list,
                 db['AvailabilityZone']
+            ])
+    except Exception as e:
+        print(f"    Error: {e}")
+    
+    apply_header_style(ws, header_font, header_fill, header_alignment)
+
+def export_rds_clusters(ws, rds, ec2, header_font, header_fill, header_alignment):
+    """Export RDS Aurora Clusters"""
+    print("  - Exporting RDS Clusters (Aurora)...")
+    
+    headers = [
+        'Cluster Identifier', 'Engine', 'Engine Version', 'Engine Mode',
+        'Status', 'Cluster Endpoint', 'Reader Endpoint', 'Port',
+        'Database Name', 'Master Username', 'Multi-AZ',
+        'Cluster Members', 'Storage Encrypted', 'Backup Retention (Days)',
+        'VPC ID', 'VPC Name', 'VPC CIDR',
+        'Subnet Group', 'Availability Zones', 'Storage Type'
+    ]
+    ws.append(headers)
+    
+    try:
+        db_clusters = rds.describe_db_clusters()
+        for cluster in db_clusters['DBClusters']:
+            # Get endpoints
+            cluster_endpoint = cluster.get('Endpoint', 'N/A')
+            reader_endpoint = cluster.get('ReaderEndpoint', 'N/A')
+            
+            # Get VPC info
+            vpc_id = 'N/A'
+            vpc_info = {'name': 'N/A', 'cidr': 'N/A'}
+            
+            # Try to get VPC from cluster members
+            if cluster.get('DBClusterMembers'):
+                try:
+                    member_id = cluster['DBClusterMembers'][0]['DBInstanceIdentifier']
+                    member_info = rds.describe_db_instances(DBInstanceIdentifier=member_id)
+                    if member_info['DBInstances']:
+                        vpc_id = member_info['DBInstances'][0].get('DBSubnetGroup', {}).get('VpcId', 'N/A')
+                        if vpc_id != 'N/A':
+                            vpc_info = get_vpc_details(ec2, vpc_id)
+                except:
+                    pass
+            
+            # Get subnet group
+            subnet_group_name = cluster.get('DBSubnetGroup', 'N/A')
+            
+            # Get availability zones
+            availability_zones = ', '.join(cluster.get('AvailabilityZones', []))
+            
+            # Get cluster members count
+            cluster_members = len(cluster.get('DBClusterMembers', []))
+            member_list = ', '.join([m['DBInstanceIdentifier'] for m in cluster.get('DBClusterMembers', [])])
+            
+            ws.append([
+                cluster['DBClusterIdentifier'],
+                cluster['Engine'],
+                cluster['EngineVersion'],
+                cluster.get('EngineMode', 'provisioned'),
+                cluster['Status'],
+                cluster_endpoint,
+                reader_endpoint,
+                cluster.get('Port', 'N/A'),
+                cluster.get('DatabaseName', 'N/A'),
+                cluster.get('MasterUsername', 'N/A'),
+                'Yes' if cluster.get('MultiAZ', False) else 'No',
+                f"{cluster_members} ({member_list})" if member_list else str(cluster_members),
+                'Yes' if cluster.get('StorageEncrypted', False) else 'No',
+                cluster.get('BackupRetentionPeriod', 0),
+                vpc_id,
+                vpc_info['name'],
+                vpc_info['cidr'],
+                subnet_group_name,
+                availability_zones if availability_zones else 'N/A',
+                cluster.get('StorageType', 'aurora')
             ])
     except Exception as e:
         print(f"    Error: {e}")
@@ -931,6 +1000,307 @@ def export_vpc_summary(ws, ec2, region, header_font, header_fill, header_alignme
     
     apply_header_style(ws, header_font, header_fill, header_alignment)
 
+def export_s3_buckets(ws, s3, header_font, header_fill, header_alignment):
+    """Export S3 Buckets with detailed information"""
+    print("  - Exporting S3 Buckets...")
+    
+    headers = [
+        'Bucket Name', 'Creation Date', 'Region',
+        'Versioning Status', 'Encryption Type', 'Public Access Block',
+        'Total Objects', 'Total Size (GB)', 'Storage Classes',
+        'Lifecycle Rules', 'Replication Status', 'Logging Enabled',
+        'Website Hosting', 'Tags'
+    ]
+    ws.append(headers)
+    
+    try:
+        buckets = s3.list_buckets()
+        
+        for bucket in buckets.get('Buckets', []):
+            bucket_name = bucket['Name']
+            
+            try:
+                # Get bucket location
+                try:
+                    location = s3.get_bucket_location(Bucket=bucket_name)
+                    region = location['LocationConstraint'] or 'us-east-1'
+                except:
+                    region = 'N/A'
+                
+                # Get versioning status
+                try:
+                    versioning = s3.get_bucket_versioning(Bucket=bucket_name)
+                    versioning_status = versioning.get('Status', 'Disabled')
+                except:
+                    versioning_status = 'N/A'
+                
+                # Get encryption
+                try:
+                    encryption = s3.get_bucket_encryption(Bucket=bucket_name)
+                    encryption_type = encryption['ServerSideEncryptionConfiguration']['Rules'][0]['ApplyServerSideEncryptionByDefault']['SSEAlgorithm']
+                except:
+                    encryption_type = 'None'
+                
+                # Get public access block
+                try:
+                    public_access = s3.get_public_access_block(Bucket=bucket_name)
+                    config = public_access['PublicAccessBlockConfiguration']
+                    if all([config.get('BlockPublicAcls'), config.get('BlockPublicPolicy'),
+                           config.get('IgnorePublicAcls'), config.get('RestrictPublicBuckets')]):
+                        public_access_status = 'All Blocked'
+                    else:
+                        public_access_status = 'Partially Blocked'
+                except:
+                    public_access_status = 'Not Configured'
+                
+                # Get bucket metrics (object count and size)
+                try:
+                    cloudwatch = boto3.client('cloudwatch', region_name=region)
+                    # Note: This requires CloudWatch metrics to be enabled
+                    total_objects = 'N/A'
+                    total_size_gb = 'N/A'
+                    storage_classes = 'N/A'
+                except:
+                    total_objects = 'N/A'
+                    total_size_gb = 'N/A'
+                    storage_classes = 'N/A'
+                
+                # Get lifecycle rules
+                try:
+                    lifecycle = s3.get_bucket_lifecycle_configuration(Bucket=bucket_name)
+                    lifecycle_count = len(lifecycle.get('Rules', []))
+                except:
+                    lifecycle_count = 0
+                
+                # Get replication status
+                try:
+                    replication = s3.get_bucket_replication(Bucket=bucket_name)
+                    replication_status = 'Enabled'
+                except:
+                    replication_status = 'Disabled'
+                
+                # Get logging status
+                try:
+                    logging = s3.get_bucket_logging(Bucket=bucket_name)
+                    logging_enabled = 'Yes' if logging.get('LoggingEnabled') else 'No'
+                except:
+                    logging_enabled = 'No'
+                
+                # Get website hosting
+                try:
+                    website = s3.get_bucket_website(Bucket=bucket_name)
+                    website_hosting = 'Enabled'
+                except:
+                    website_hosting = 'Disabled'
+                
+                # Get tags
+                try:
+                    tags = s3.get_bucket_tagging(Bucket=bucket_name)
+                    tag_list = ', '.join([f"{tag['Key']}={tag['Value']}" for tag in tags.get('TagSet', [])])
+                except:
+                    tag_list = 'N/A'
+                
+                ws.append([
+                    bucket_name,
+                    bucket['CreationDate'].strftime('%Y-%m-%d %H:%M:%S'),
+                    region,
+                    versioning_status,
+                    encryption_type,
+                    public_access_status,
+                    total_objects,
+                    total_size_gb,
+                    storage_classes,
+                    lifecycle_count,
+                    replication_status,
+                    logging_enabled,
+                    website_hosting,
+                    tag_list
+                ])
+            except Exception as e:
+                print(f"    Error processing bucket {bucket_name}: {e}")
+                
+    except Exception as e:
+        print(f"    Error: {e}")
+    
+    apply_header_style(ws, header_font, header_fill, header_alignment)
+
+def export_s3_glacier_vaults(ws, glacier, header_font, header_fill, header_alignment):
+    """Export S3 Glacier Vaults"""
+    print("  - Exporting S3 Glacier Vaults...")
+    
+    headers = [
+        'Vault Name', 'Vault ARN', 'Creation Date',
+        'Last Inventory Date', 'Number of Archives', 'Size (GB)',
+        'Notifications Enabled', 'SNS Topic'
+    ]
+    ws.append(headers)
+    
+    try:
+        vaults = glacier.list_vaults()
+        
+        for vault in vaults.get('VaultList', []):
+            # Convert size to GB
+            size_gb = vault.get('SizeInBytes', 0) / (1024**3)
+            
+            # Get notification configuration
+            try:
+                notification = glacier.get_vault_notifications(vaultName=vault['VaultName'])
+                notifications_enabled = 'Yes'
+                sns_topic = notification.get('vaultNotificationConfig', {}).get('SNSTopic', 'N/A')
+            except:
+                notifications_enabled = 'No'
+                sns_topic = 'N/A'
+            
+            last_inventory = vault.get('LastInventoryDate')
+            last_inventory_str = last_inventory.strftime('%Y-%m-%d %H:%M:%S') if last_inventory else 'N/A'
+            
+            ws.append([
+                vault['VaultName'],
+                vault['VaultARN'],
+                vault['CreationDate'].strftime('%Y-%m-%d %H:%M:%S'),
+                last_inventory_str,
+                vault.get('NumberOfArchives', 0),
+                f"{size_gb:.2f}",
+                notifications_enabled,
+                sns_topic
+            ])
+    except Exception as e:
+        print(f"    Error: {e}")
+    
+    apply_header_style(ws, header_font, header_fill, header_alignment)
+
+def export_cognito_user_pools(ws, cognito_idp, header_font, header_fill, header_alignment):
+    """Export Cognito User Pools"""
+    print("  - Exporting Cognito User Pools...")
+    
+    headers = [
+        'User Pool Name', 'User Pool ID', 'Status', 'Creation Date',
+        'Last Modified Date', 'MFA Configuration', 'Email Verification',
+        'Phone Verification', 'Auto Verified Attributes', 'Password Policy',
+        'Lambda Triggers', 'User Pool Clients', 'Domain Name',
+        'Estimated Users'
+    ]
+    ws.append(headers)
+    
+    try:
+        user_pools = cognito_idp.list_user_pools(MaxResults=60)
+        
+        for pool_summary in user_pools.get('UserPools', []):
+            pool_id = pool_summary['Id']
+            
+            try:
+                # Get detailed user pool information
+                pool = cognito_idp.describe_user_pool(UserPoolId=pool_id)['UserPool']
+                
+                # MFA configuration
+                mfa_config = pool.get('MfaConfiguration', 'OFF')
+                
+                # Email and phone verification
+                auto_verified = ', '.join(pool.get('AutoVerifiedAttributes', [])) or 'None'
+                
+                # Password policy
+                password_policy = pool.get('Policies', {}).get('PasswordPolicy', {})
+                min_length = password_policy.get('MinimumLength', 'N/A')
+                password_summary = f"Min Length: {min_length}"
+                
+                # Lambda triggers
+                lambda_config = pool.get('LambdaConfig', {})
+                lambda_triggers = len([k for k, v in lambda_config.items() if v]) if lambda_config else 0
+                
+                # Get user pool clients
+                try:
+                    clients = cognito_idp.list_user_pool_clients(UserPoolId=pool_id, MaxResults=60)
+                    client_count = len(clients.get('UserPoolClients', []))
+                except:
+                    client_count = 0
+                
+                # Get domain name
+                try:
+                    domain = cognito_idp.describe_user_pool_domain(Domain=pool['Name'])
+                    domain_name = domain.get('DomainDescription', {}).get('Domain', 'N/A')
+                except:
+                    domain_name = 'N/A'
+                
+                # Estimated number of users
+                estimated_users = pool.get('EstimatedNumberOfUsers', 'N/A')
+                
+                ws.append([
+                    pool['Name'],
+                    pool['Id'],
+                    pool.get('Status', 'N/A'),
+                    pool['CreationDate'].strftime('%Y-%m-%d %H:%M:%S'),
+                    pool['LastModifiedDate'].strftime('%Y-%m-%d %H:%M:%S'),
+                    mfa_config,
+                    'Yes' if 'email' in pool.get('AutoVerifiedAttributes', []) else 'No',
+                    'Yes' if 'phone_number' in pool.get('AutoVerifiedAttributes', []) else 'No',
+                    auto_verified,
+                    password_summary,
+                    lambda_triggers,
+                    client_count,
+                    domain_name,
+                    estimated_users
+                ])
+            except Exception as e:
+                print(f"    Error processing user pool {pool_id}: {e}")
+    except Exception as e:
+        print(f"    Error: {e}")
+    
+    apply_header_style(ws, header_font, header_fill, header_alignment)
+
+def export_cognito_identity_pools(ws, cognito_identity, header_font, header_fill, header_alignment):
+    """Export Cognito Identity Pools"""
+    print("  - Exporting Cognito Identity Pools...")
+    
+    headers = [
+        'Identity Pool Name', 'Identity Pool ID', 
+        'Allow Unauthenticated Access', 'Identity Providers',
+        'Cognito User Pools', 'SAML Providers', 
+        'OpenID Connect Providers', 'Developer Providers'
+    ]
+    ws.append(headers)
+    
+    try:
+        identity_pools = cognito_identity.list_identity_pools(MaxResults=60)
+        
+        for pool_summary in identity_pools.get('IdentityPools', []):
+            pool_id = pool_summary['IdentityPoolId']
+            
+            try:
+                # Get detailed identity pool information
+                pool = cognito_identity.describe_identity_pool(IdentityPoolId=pool_id)
+                
+                # Count identity providers
+                cognito_providers = pool.get('CognitoIdentityProviders', [])
+                cognito_provider_count = len(cognito_providers)
+                
+                saml_providers = pool.get('SamlProviderARNs', [])
+                saml_provider_count = len(saml_providers)
+                
+                oidc_providers = pool.get('OpenIdConnectProviderARNs', [])
+                oidc_provider_count = len(oidc_providers)
+                
+                developer_providers = pool.get('DeveloperProviderName', 'None')
+                
+                # Supported login providers
+                supported_providers = ', '.join(pool.get('SupportedLoginProviders', {}).keys()) or 'None'
+                
+                ws.append([
+                    pool['IdentityPoolName'],
+                    pool['IdentityPoolId'],
+                    'Yes' if pool.get('AllowUnauthenticatedIdentities', False) else 'No',
+                    supported_providers,
+                    cognito_provider_count,
+                    saml_provider_count,
+                    oidc_provider_count,
+                    developer_providers
+                ])
+            except Exception as e:
+                print(f"    Error processing identity pool {pool_id}: {e}")
+    except Exception as e:
+        print(f"    Error: {e}")
+    
+    apply_header_style(ws, header_font, header_fill, header_alignment)
+
 def export_aws_resources_for_profile(profile_name):
     """
     Export AWS resources for a specific profile to Excel.
@@ -980,6 +1350,10 @@ def export_aws_resources_for_profile(profile_name):
         logs = session.client('logs')
         dynamodb = session.client('dynamodb')
         transfer = session.client('transfer')
+        s3 = session.client('s3')
+        glacier = session.client('glacier')
+        cognito_idp = session.client('cognito-idp')
+        cognito_identity = session.client('cognito-identity')
         
         # Export all resources
         print("\nExporting resources:")
@@ -991,6 +1365,10 @@ def export_aws_resources_for_profile(profile_name):
         # RDS Instances
         ws_rds = wb.create_sheet("RDS Instances")
         export_rds_instances(ws_rds, rds, ec2, header_font, header_fill, header_alignment)
+        
+        # RDS Clusters (Aurora) (NEW)
+        ws_rds_clusters = wb.create_sheet("RDS Clusters")
+        export_rds_clusters(ws_rds_clusters, rds, ec2, header_font, header_fill, header_alignment)
         
         # Lambda Functions
         ws_lambda = wb.create_sheet("Lambda Functions")
@@ -1039,6 +1417,22 @@ def export_aws_resources_for_profile(profile_name):
         # AWS Personalize (NEW)
         ws_personalize = wb.create_sheet("Personalize")
         export_personalize(ws_personalize, personalize, header_font, header_fill, header_alignment)
+
+        # S3 Buckets
+        ws_s3 = wb.create_sheet("S3 Buckets")
+        export_s3_buckets(ws_s3, s3, header_font, header_fill, header_alignment)
+
+        # S3 Glacier Vaults
+        ws_glacier = wb.create_sheet("Glacier Vaults")
+        export_s3_glacier_vaults(ws_glacier, glacier, header_font, header_fill, header_alignment)
+
+        # Cognito User Pools
+        ws_cognito_users = wb.create_sheet("Cognito User Pools")
+        export_cognito_user_pools(ws_cognito_users, cognito_idp, header_font, header_fill, header_alignment)
+
+        # Cognito Identity Pools
+        ws_cognito_identity = wb.create_sheet("Cognito Identity Pools")
+        export_cognito_identity_pools(ws_cognito_identity, cognito_identity, header_font, header_fill, header_alignment)
         
         # VPC Summary
         ws_vpc = wb.create_sheet("VPC Summary")
