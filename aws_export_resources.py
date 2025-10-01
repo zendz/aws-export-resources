@@ -606,6 +606,305 @@ def export_mq_brokers(ws, mq, ec2, header_font, header_fill, header_alignment):
     
     apply_header_style(ws, header_font, header_fill, header_alignment)
 
+def export_load_balancers(ws, elbv2, ec2, header_font, header_fill, header_alignment):
+    """Export Elastic Load Balancers (ALB, NLB, GLB)"""
+    print("  - Exporting Load Balancers...")
+    
+    headers = [
+        'Load Balancer Name', 'Type', 'Scheme', 'State',
+        'DNS Name', 'Created Time',
+        'VPC ID', 'VPC Name', 'VPC CIDR',
+        'Availability Zones', 'Subnet IDs', 'Security Groups',
+        'IP Address Type'
+    ]
+    ws.append(headers)
+    
+    try:
+        load_balancers = elbv2.describe_load_balancers()
+        
+        for lb in load_balancers['LoadBalancers']:
+            vpc_id = lb.get('VpcId', 'N/A')
+            vpc_info = get_vpc_details(ec2, vpc_id) if vpc_id != 'N/A' else {'name': 'N/A', 'cidr': 'N/A'}
+            
+            # Get availability zones and subnets
+            azs = [az['ZoneName'] for az in lb.get('AvailabilityZones', [])]
+            subnet_ids = [az['SubnetId'] for az in lb.get('AvailabilityZones', [])]
+            
+            security_groups = lb.get('SecurityGroups', [])
+            
+            ws.append([
+                lb['LoadBalancerName'],
+                lb['Type'],
+                lb['Scheme'],
+                lb['State']['Code'],
+                lb['DNSName'],
+                lb['CreatedTime'].strftime('%Y-%m-%d %H:%M:%S'),
+                vpc_id,
+                vpc_info['name'],
+                vpc_info['cidr'],
+                ', '.join(azs) if azs else 'N/A',
+                ', '.join(subnet_ids) if subnet_ids else 'N/A',
+                ', '.join(security_groups) if security_groups else 'N/A',
+                lb.get('IpAddressType', 'N/A')
+            ])
+    except Exception as e:
+        print(f"    Error: {e}")
+    
+    apply_header_style(ws, header_font, header_fill, header_alignment)
+
+def export_personalize(ws, personalize, header_font, header_fill, header_alignment):
+    """Export AWS Personalize resources"""
+    print("  - Exporting AWS Personalize...")
+    
+    headers = [
+        'Campaign Name', 'Campaign ARN', 'Status',
+        'Solution Version ARN', 'Min Provisioned TPS',
+        'Created Time', 'Last Updated'
+    ]
+    ws.append(headers)
+    
+    try:
+        campaigns = personalize.list_campaigns()
+        
+        for campaign_summary in campaigns.get('campaigns', []):
+            campaign_arn = campaign_summary['campaignArn']
+            
+            try:
+                campaign = personalize.describe_campaign(campaignArn=campaign_arn)['campaign']
+                
+                ws.append([
+                    campaign['name'],
+                    campaign['campaignArn'],
+                    campaign['status'],
+                    campaign.get('solutionVersionArn', 'N/A'),
+                    campaign.get('minProvisionedTPS', 'N/A'),
+                    campaign['creationDateTime'].strftime('%Y-%m-%d %H:%M:%S'),
+                    campaign['lastUpdatedDateTime'].strftime('%Y-%m-%d %H:%M:%S')
+                ])
+            except:
+                pass
+    except Exception as e:
+        print(f"    Error: {e}")
+    
+    apply_header_style(ws, header_font, header_fill, header_alignment)
+
+def export_cloudwatch_alarms(ws, cloudwatch, header_font, header_fill, header_alignment):
+    """Export CloudWatch Alarms"""
+    print("  - Exporting CloudWatch Alarms...")
+    
+    headers = [
+        'Alarm Name', 'State', 'Metric Name', 'Namespace',
+        'Statistic', 'Period (sec)', 'Threshold', 'Comparison Operator',
+        'Evaluation Periods', 'Actions Enabled', 'Alarm Actions',
+        'Dimensions'
+    ]
+    ws.append(headers)
+    
+    try:
+        alarms = cloudwatch.describe_alarms()
+        
+        for alarm in alarms['MetricAlarms']:
+            dimensions = ', '.join([f"{d['Name']}={d['Value']}" for d in alarm.get('Dimensions', [])])
+            alarm_actions = ', '.join(alarm.get('AlarmActions', []))
+            
+            ws.append([
+                alarm['AlarmName'],
+                alarm['StateValue'],
+                alarm.get('MetricName', 'N/A'),
+                alarm.get('Namespace', 'N/A'),
+                alarm.get('Statistic', 'N/A'),
+                alarm.get('Period', 'N/A'),
+                alarm.get('Threshold', 'N/A'),
+                alarm.get('ComparisonOperator', 'N/A'),
+                alarm.get('EvaluationPeriods', 'N/A'),
+                'Yes' if alarm.get('ActionsEnabled', False) else 'No',
+                alarm_actions if alarm_actions else 'N/A',
+                dimensions if dimensions else 'N/A'
+            ])
+    except Exception as e:
+        print(f"    Error: {e}")
+    
+    apply_header_style(ws, header_font, header_fill, header_alignment)
+
+def export_cloudwatch_log_groups(ws, logs, header_font, header_fill, header_alignment):
+    """Export CloudWatch Log Groups"""
+    print("  - Exporting CloudWatch Log Groups...")
+    
+    headers = [
+        'Log Group Name', 'Creation Time', 'Retention (Days)',
+        'Stored Bytes', 'Metric Filter Count', 'KMS Key ID'
+    ]
+    ws.append(headers)
+    
+    try:
+        paginator = logs.get_paginator('describe_log_groups')
+        
+        for page in paginator.paginate():
+            for log_group in page['logGroups']:
+                stored_bytes = log_group.get('storedBytes', 0)
+                stored_mb = stored_bytes / (1024 * 1024)
+                
+                creation_time = datetime.fromtimestamp(log_group['creationTime'] / 1000).strftime('%Y-%m-%d %H:%M:%S')
+                
+                ws.append([
+                    log_group['logGroupName'],
+                    creation_time,
+                    log_group.get('retentionInDays', 'Never Expire'),
+                    f"{stored_mb:.2f} MB",
+                    log_group.get('metricFilterCount', 0),
+                    log_group.get('kmsKeyId', 'N/A')
+                ])
+    except Exception as e:
+        print(f"    Error: {e}")
+    
+    apply_header_style(ws, header_font, header_fill, header_alignment)
+
+def export_dynamodb_tables(ws, dynamodb, header_font, header_fill, header_alignment):
+    """Export DynamoDB Tables"""
+    print("  - Exporting DynamoDB Tables...")
+    
+    headers = [
+        'Table Name', 'Status', 'Creation Time',
+        'Item Count', 'Table Size (Bytes)', 'Read Capacity Units',
+        'Write Capacity Units', 'Billing Mode', 'Table Class',
+        'Partition Key', 'Sort Key', 'Global Secondary Indexes',
+        'Local Secondary Indexes', 'Stream Enabled', 'Point-in-time Recovery',
+        'Encryption Type'
+    ]
+    ws.append(headers)
+    
+    try:
+        tables = dynamodb.list_tables()
+        
+        for table_name in tables['TableNames']:
+            try:
+                table = dynamodb.describe_table(TableName=table_name)['Table']
+                
+                # Get partition and sort keys
+                partition_key = 'N/A'
+                sort_key = 'N/A'
+                for key in table.get('KeySchema', []):
+                    if key['KeyType'] == 'HASH':
+                        partition_key = key['AttributeName']
+                    elif key['KeyType'] == 'RANGE':
+                        sort_key = key['AttributeName']
+                
+                # Get GSI and LSI
+                gsi_count = len(table.get('GlobalSecondaryIndexes', []))
+                lsi_count = len(table.get('LocalSecondaryIndexes', []))
+                
+                # Get capacity info
+                billing_mode = table.get('BillingModeSummary', {}).get('BillingMode', 
+                               'PROVISIONED' if table.get('ProvisionedThroughput') else 'N/A')
+                
+                read_capacity = table.get('ProvisionedThroughput', {}).get('ReadCapacityUnits', 'On-Demand')
+                write_capacity = table.get('ProvisionedThroughput', {}).get('WriteCapacityUnits', 'On-Demand')
+                
+                # Get additional features
+                stream_enabled = 'Yes' if table.get('StreamSpecification', {}).get('StreamEnabled', False) else 'No'
+                
+                # Point-in-time recovery
+                try:
+                    pitr = dynamodb.describe_continuous_backups(TableName=table_name)
+                    pitr_status = pitr['ContinuousBackupsDescription']['PointInTimeRecoveryDescription']['PointInTimeRecoveryStatus']
+                    pitr_enabled = 'Yes' if pitr_status == 'ENABLED' else 'No'
+                except:
+                    pitr_enabled = 'N/A'
+                
+                encryption_type = table.get('SSEDescription', {}).get('SSEType', 'N/A')
+                
+                ws.append([
+                    table['TableName'],
+                    table['TableStatus'],
+                    table['CreationDateTime'].strftime('%Y-%m-%d %H:%M:%S'),
+                    table.get('ItemCount', 0),
+                    table.get('TableSizeBytes', 0),
+                    read_capacity,
+                    write_capacity,
+                    billing_mode,
+                    table.get('TableClassSummary', {}).get('TableClass', 'STANDARD'),
+                    partition_key,
+                    sort_key,
+                    gsi_count,
+                    lsi_count,
+                    stream_enabled,
+                    pitr_enabled,
+                    encryption_type
+                ])
+            except Exception as e:
+                print(f"    Error processing table {table_name}: {e}")
+    except Exception as e:
+        print(f"    Error: {e}")
+    
+    apply_header_style(ws, header_font, header_fill, header_alignment)
+
+def export_transfer_family(ws, transfer, ec2, header_font, header_fill, header_alignment):
+    """Export AWS Transfer Family Servers"""
+    print("  - Exporting AWS Transfer Family...")
+    
+    headers = [
+        'Server ID', 'State', 'Endpoint Type', 'Domain',
+        'Protocols', 'Identity Provider Type', 'Logging Role',
+        'VPC ID', 'VPC Name', 'VPC CIDR', 'Subnet IDs',
+        'Security Group IDs', 'User Count'
+    ]
+    ws.append(headers)
+    
+    try:
+        servers = transfer.list_servers()
+        
+        for server_summary in servers.get('Servers', []):
+            server_id = server_summary['ServerId']
+            
+            try:
+                server = transfer.describe_server(ServerId=server_id)['Server']
+                
+                # Get VPC details for VPC endpoint type
+                vpc_id = 'N/A'
+                vpc_info = {'name': 'N/A', 'cidr': 'N/A'}
+                subnet_ids = []
+                security_groups = []
+                
+                if server.get('EndpointType') == 'VPC':
+                    endpoint_details = server.get('EndpointDetails', {})
+                    subnet_ids = endpoint_details.get('SubnetIds', [])
+                    security_groups = endpoint_details.get('SecurityGroupIds', [])
+                    vpc_id = endpoint_details.get('VpcId', 'N/A')
+                    
+                    if vpc_id != 'N/A':
+                        vpc_info = get_vpc_details(ec2, vpc_id)
+                
+                # Get user count
+                try:
+                    users = transfer.list_users(ServerId=server_id)
+                    user_count = len(users.get('Users', []))
+                except:
+                    user_count = 0
+                
+                protocols = ', '.join(server.get('Protocols', []))
+                
+                ws.append([
+                    server['ServerId'],
+                    server['State'],
+                    server.get('EndpointType', 'N/A'),
+                    server.get('Domain', 'N/A'),
+                    protocols,
+                    server.get('IdentityProviderType', 'N/A'),
+                    server.get('LoggingRole', 'N/A'),
+                    vpc_id,
+                    vpc_info['name'],
+                    vpc_info['cidr'],
+                    ', '.join(subnet_ids) if subnet_ids else 'N/A',
+                    ', '.join(security_groups) if security_groups else 'N/A',
+                    user_count
+                ])
+            except Exception as e:
+                print(f"    Error processing server {server_id}: {e}")
+    except Exception as e:
+        print(f"    Error: {e}")
+    
+    apply_header_style(ws, header_font, header_fill, header_alignment)
+
 def export_vpc_summary(ws, ec2, region, header_font, header_fill, header_alignment):
     """Export VPC summary"""
     print("  - Exporting VPC summary...")
@@ -654,7 +953,7 @@ def export_aws_resources_for_profile(profile_name):
         
         # Generate filename with timestamp
         timestamp = datetime.now().strftime('%y%m%d-%H%M')
-        output_file = f'aws_resources_{account_alias}-{account_id}_{timestamp}.xlsx'
+        output_file = f'aws_resources_{timestamp}_{account_id}-{account_alias}.xlsx'
         
         # Create a new Excel workbook
         wb = openpyxl.Workbook()
@@ -666,6 +965,7 @@ def export_aws_resources_for_profile(profile_name):
         header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         
         # Initialize AWS clients
+        print("\n  - Initializing AWS clients...")
         ec2 = session.client('ec2')
         rds = session.client('rds')
         lambda_client = session.client('lambda')
@@ -674,6 +974,12 @@ def export_aws_resources_for_profile(profile_name):
         eks = session.client('eks')
         elasticache = session.client('elasticache')
         mq = session.client('mq')
+        elbv2 = session.client('elbv2')
+        personalize = session.client('personalize')
+        cloudwatch = session.client('cloudwatch')
+        logs = session.client('logs')
+        dynamodb = session.client('dynamodb')
+        transfer = session.client('transfer')
         
         # Export all resources
         print("\nExporting resources:")
@@ -709,6 +1015,30 @@ def export_aws_resources_for_profile(profile_name):
         # Amazon MQ
         ws_mq = wb.create_sheet("Amazon MQ")
         export_mq_brokers(ws_mq, mq, ec2, header_font, header_fill, header_alignment)
+        
+        # Load Balancers (NEW)
+        ws_elb = wb.create_sheet("Load Balancers")
+        export_load_balancers(ws_elb, elbv2, ec2, header_font, header_fill, header_alignment)
+        
+        # DynamoDB Tables (NEW)
+        ws_dynamodb = wb.create_sheet("DynamoDB Tables")
+        export_dynamodb_tables(ws_dynamodb, dynamodb, header_font, header_fill, header_alignment)
+        
+        # CloudWatch Alarms (NEW)
+        ws_cw_alarms = wb.create_sheet("CloudWatch Alarms")
+        export_cloudwatch_alarms(ws_cw_alarms, cloudwatch, header_font, header_fill, header_alignment)
+        
+        # CloudWatch Log Groups (NEW)
+        ws_cw_logs = wb.create_sheet("CloudWatch Logs")
+        export_cloudwatch_log_groups(ws_cw_logs, logs, header_font, header_fill, header_alignment)
+        
+        # Transfer Family (NEW)
+        ws_transfer = wb.create_sheet("Transfer Family")
+        export_transfer_family(ws_transfer, transfer, ec2, header_font, header_fill, header_alignment)
+        
+        # AWS Personalize (NEW)
+        ws_personalize = wb.create_sheet("Personalize")
+        export_personalize(ws_personalize, personalize, header_font, header_fill, header_alignment)
         
         # VPC Summary
         ws_vpc = wb.create_sheet("VPC Summary")
