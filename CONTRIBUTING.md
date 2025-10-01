@@ -53,17 +53,45 @@ Thank you for your interest in contributing to this project! We welcome contribu
 
 ## Reporting Issues
 
-If you encounter any issues or have feature requests:
+**All issues should be reported through GitHub Issues only.**
 
-- Create an issue on GitHub: https://github.com/zendz/aws-export-resources/issues
-- Provide detailed information about the problem
-- Include steps to reproduce the issue
-- Mention your AWS configuration (region, services, etc.)
+When reporting issues:
+
+- 🔍 **Search existing issues** first to avoid duplicates
+- 📝 **Use issue templates** when available
+- 🏷️ **Add appropriate labels** (bug, enhancement, question, etc.)
+- 📋 **Provide detailed information** about the problem
+- 🔄 **Include steps to reproduce** the issue
+- ⚙️ **Mention your AWS configuration** (region, services, etc.)
+- 📊 **Include logs and error messages** when applicable
+- 🖼️ **Add screenshots** if relevant
+
+**Issue Types:**
+- **Bug Report**: Something isn't working as expected
+- **Feature Request**: Suggest new functionality or improvements
+- **Question**: Need help or clarification
+- **Documentation**: Improvements to docs or examples
+
+**Note:** For security reasons, email addresses use [at] and [dot] notation. Replace with @ and . respectively.
 
 ## Support & Contact
 
 For questions or additional support:
 
-- Email: zendz@dopost.it
+**Maintainer:** Nattait Nandawarang  
+**Organization:** Gosoft (Thailand) Co., Ltd.  
+**Role:** Expert DevOps Engineer, Data Science and Data Engineering Team
+
+**All communication should go through GitHub Issues:**
+- 🐛 **Bug Reports**: [Create a Bug Report](https://github.com/zendz/aws-export-resources/issues/new?template=bug_report.md)
+- 💡 **Feature Requests**: [Request a Feature](https://github.com/zendz/aws-export-resources/issues/new?template=feature_request.md)
+- ❓ **Questions**: [Ask a Question](https://github.com/zendz/aws-export-resources/issues/new?template=question.md)
+- 💬 **General Discussion**: [Start a Discussion](https://github.com/zendz/aws-export-resources/discussions)
+
+**Why GitHub Issues?**
+- Transparent communication for the community
+- Better tracking of problems and solutions
+- Searchable knowledge base for future users
+- Collaborative problem-solving
 
 We appreciate your contributions to making this tool better!

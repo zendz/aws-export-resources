@@ -139,11 +139,37 @@ Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details on how to contribute t
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
+## Author
+
+## Author
+
+**Nattait Nandawarang**  
+Expert DevOps Engineer  
+Data Science and Data Engineering Team  
+Gosoft (Thailand) Co., Ltd.  
+
+**Contact:** GitHub Issues Only - [Create Issue](https://github.com/zendz/aws-export-resources/issues/new)
+
 ## Support
 
+## Support
+
+**All support is provided through GitHub Issues only.**
+
 For issues, questions, or feature requests:
-- Create an issue on GitHub
-- Check the [Contributing Guide](CONTRIBUTING.md) for development setup
+- 🐛 **Report Bugs**: [Create a Bug Report](https://github.com/zendz/aws-export-resources/issues/new)
+- 💡 **Request Features**: [Suggest an Enhancement](https://github.com/zendz/aws-export-resources/issues/new)
+- ❓ **Ask Questions**: [Get Help](https://github.com/zendz/aws-export-resources/issues/new)
+- 📖 **Contributing**: Check the [Contributing Guide](CONTRIBUTING.md) for development setup
+- 🔒 **Security**: See [Security Guidelines](SECURITY.md) for security-related information
+
+**Why GitHub Issues?**
+- Transparent and searchable for the community
+- Better tracking and resolution of problems
+- Collaborative problem-solving
+- Knowledge base for future users
+
+**Note:** Email contact has been removed for security and efficiency. All communication goes through GitHub Issues.
 
 ## Changelog
 
