@@ -1,30 +1,39 @@
-# Change Logs
-# Version 1.0 (Initial Release)
-#   - Basic AWS resource export functionality
-#   - Support for EC2, RDS, Lambda, EFS, ECS, EKS, ElastiCache, Amazon MQ
-#   - Multi-profile support
-#   - Excel export with formatting
+# ===============================================================================
+# AWS Multi-Profile Resource Exporter
+# ===============================================================================
 #
-# Version 1.1 (Service Expansion)
-#   - Added Load Balancers (ALB, NLB, GLB) export
-#   - Added DynamoDB Tables with detailed configuration
-#   - Added CloudWatch Alarms and Log Groups
-#   - Added Transfer Family servers
-#   - Added AWS Personalize campaigns
-#   - Enhanced RDS with Aurora Clusters support
+# Author: Nattait Nandawarang
+# Organization: Gosoft (Thailand) Co., Ltd.
+# Position: Expert DevOps Engineer, Data Science and Data Engineering Team
+# Contact: GitHub Issues Only - https://github.com/zendz/aws-export-resources/issues
+# Version: 1.4.0
+# Created: September 20, 2025
+# Last Updated: October 01, 2025
+# License: MIT License
+# 
+# Description:
+#   A comprehensive AWS resource inventory tool that exports detailed information
+#   about AWS resources across multiple profiles to Excel format with parallel
+#   processing capabilities and advanced tag management.
 #
-# Version 1.2 (Storage & Identity Services)
-#   - Added S3 Buckets with comprehensive details (versioning, encryption, public access)
-#   - Added S3 Glacier Vaults with notification settings
-#   - Added Cognito User Pools and Identity Pools
-#   - Improved error handling and resource details
+# Requirements:
+#   - Python 3.7+
+#   - boto3
+#   - openpyxl
+#   - AWS CLI configured with appropriate profiles
 #
-# Version 1.3 (Performance & Threading - Planned)
-#   - Add parallel processing with threading for faster exports
-#   - Implement concurrent API calls for multiple services
-#   - Add progress indicators and better logging
-#   - Optimize memory usage for large environments
-
+# Installation:
+#   pip install boto3 openpyxl
+#
+# Usage:
+#   python main9.py                    # Use configured profiles
+#   python main9.py profile1 profile2  # Use specific profiles
+#
+# GitHub: https://github.com/your-org/aws-export-resources
+# Documentation: https://github.com/zendz/aws-export-resources/wiki
+# Changelog: See CHANGELOG.md for version history and release notes
+#
+# ===============================================================================
 import boto3
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
@@ -45,6 +54,78 @@ AWS_PROFILES = [
     'dev'
 ]
 
+# Add this section after imports and before the export functions
+
+# ==================== TAG EXTRACTION CONFIGURATION ====================
+COMMON_TAG_KEYS = [
+    'Service',
+    'System',
+    'Environment',
+    'Project',
+    'Createby',
+    'CostCatagory',
+    'Name'
+]
+
+def extract_tags(aws_tags):
+    """
+    Extract common tags and additional tags from AWS resource tags.
+    
+    Args:
+        aws_tags: List of AWS tag dictionaries [{'Key': 'Name', 'Value': 'value'}, ...]
+    
+    Returns:
+        tuple: (common_tags_dict, additional_tags_string)
+    """
+    if not aws_tags:
+        common_tags = {key: 'N/A' for key in COMMON_TAG_KEYS}
+        return common_tags, 'N/A'
+    
+    # Build tag dictionary for easy lookup (case-insensitive)
+    tag_dict = {}
+    for tag in aws_tags:
+        key = tag.get('Key', '')
+        value = tag.get('Value', '')
+        tag_dict[key.lower()] = (key, value)  # Store original key and value
+    
+    # Extract common tags
+    common_tags = {}
+    for common_key in COMMON_TAG_KEYS:
+        # Case-insensitive lookup
+        lookup_key = common_key.lower()
+        if lookup_key in tag_dict:
+            common_tags[common_key] = tag_dict[lookup_key][1]  # Get value
+        else:
+            common_tags[common_key] = 'N/A'
+    
+    # Collect additional tags (those not in common tags)
+    additional_tags = []
+    common_keys_lower = [key.lower() for key in COMMON_TAG_KEYS]
+    
+    for tag in aws_tags:
+        key = tag.get('Key', '')
+        value = tag.get('Value', '')
+        if key.lower() not in common_keys_lower:
+            additional_tags.append(f"{key}={value}")
+    
+    additional_tags_str = ', '.join(additional_tags) if additional_tags else 'N/A'
+    
+    return common_tags, additional_tags_str
+
+def get_tag_columns():
+    """
+    Returns the list of tag column headers.
+    """
+    return [f'Tag_{key}' for key in COMMON_TAG_KEYS] + ['Additional_Tags']
+
+def get_tag_values(aws_tags):
+    """
+    Returns tag values as a list ready to append to row data.
+    """
+    common_tags, additional_tags = extract_tags(aws_tags)
+    return [common_tags[key] for key in COMMON_TAG_KEYS] + [additional_tags]
+
+# ======================================================================
 # You can also pass profiles as command line arguments
 # python script.py profile1 profile2 profile3
 # ======================================================
@@ -103,7 +184,7 @@ def apply_header_style(ws, header_font, header_fill, header_alignment):
         cell.alignment = header_alignment
 
 def export_ec2_instances(ws, ec2, header_font, header_fill, header_alignment):
-    """Export EC2 instances with EBS details"""
+    """Export EC2 instances with EBS details and tags"""
     print("  - Exporting EC2 instances...")
     
     headers = [
@@ -114,7 +195,7 @@ def export_ec2_instances(ws, ec2, header_font, header_fill, header_alignment):
         'EBS Volume Types', 'EBS IOPS', 'EBS Encrypted',
         'VPC ID', 'VPC Name', 'VPC CIDR',
         'Subnet ID', 'Subnet Name', 'Subnet CIDR', 'Availability Zone'
-    ]
+    ] + get_tag_columns()
     ws.append(headers)
     
     try:
@@ -161,6 +242,9 @@ def export_ec2_instances(ws, ec2, header_font, header_fill, header_alignment):
                 
                 total_ebs_size = sum(volume_sizes)
                 
+                # Extract tags
+                tag_values = get_tag_values(instance.get('Tags', []))
+                
                 ws.append([
                     instance['InstanceId'],
                     name,
@@ -185,14 +269,14 @@ def export_ec2_instances(ws, ec2, header_font, header_fill, header_alignment):
                     subnet_info['name'],
                     subnet_info['cidr'],
                     subnet_info['az']
-                ])
+                ] + tag_values)
     except Exception as e:
         print(f"    Error: {e}")
     
     apply_header_style(ws, header_font, header_fill, header_alignment)
 
 def export_rds_instances(ws, rds, ec2, header_font, header_fill, header_alignment):
-    """Export RDS instances"""
+    """Export RDS instances with tags"""
     print("  - Exporting RDS instances...")
     
     headers = [
@@ -200,7 +284,7 @@ def export_rds_instances(ws, rds, ec2, header_font, header_fill, header_alignmen
         'Instance Class', 'Status', 'Endpoint', 'Port', 'Storage (GB)',
         'Multi-AZ', 'VPC ID', 'VPC Name', 'VPC CIDR',
         'Subnet Group', 'Subnets', 'Availability Zone'
-    ]
+    ] + get_tag_columns()
     ws.append(headers)
     
     try:
@@ -215,6 +299,13 @@ def export_rds_instances(ws, rds, ec2, header_font, header_fill, header_alignmen
             subnet_group_name = db.get('DBSubnetGroup', {}).get('DBSubnetGroupName', 'N/A')
             subnets = db.get('DBSubnetGroup', {}).get('Subnets', [])
             subnet_list = ', '.join([s['SubnetIdentifier'] for s in subnets])
+            
+            # Get tags for RDS instance
+            try:
+                tags_response = rds.list_tags_for_resource(ResourceName=db['DBInstanceArn'])
+                tag_values = get_tag_values(tags_response.get('TagList', []))
+            except:
+                tag_values = get_tag_values([])
             
             ws.append([
                 db['DBInstanceIdentifier'],
@@ -232,7 +323,7 @@ def export_rds_instances(ws, rds, ec2, header_font, header_fill, header_alignmen
                 subnet_group_name,
                 subnet_list,
                 db['AvailabilityZone']
-            ])
+            ] + tag_values)
     except Exception as e:
         print(f"    Error: {e}")
     
@@ -249,7 +340,7 @@ def export_rds_clusters(ws, rds, ec2, header_font, header_fill, header_alignment
         'Cluster Members', 'Storage Encrypted', 'Backup Retention (Days)',
         'VPC ID', 'VPC Name', 'VPC CIDR',
         'Subnet Group', 'Availability Zones', 'Storage Type'
-    ]
+    ] + get_tag_columns()
     ws.append(headers)
     
     try:
@@ -313,7 +404,7 @@ def export_rds_clusters(ws, rds, ec2, header_font, header_fill, header_alignment
     apply_header_style(ws, header_font, header_fill, header_alignment)
 
 def export_lambda_functions(ws, lambda_client, ec2, header_font, header_fill, header_alignment):
-    """Export Lambda functions"""
+    """Export Lambda functions with tags"""
     print("  - Exporting Lambda functions...")
     
     headers = [
@@ -321,7 +412,7 @@ def export_lambda_functions(ws, lambda_client, ec2, header_font, header_fill, he
         'Timeout (sec)', 'Last Modified', 'Handler',
         'VPC ID', 'VPC Name', 'VPC CIDR',
         'Subnet IDs', 'Subnet Names', 'Security Groups'
-    ]
+    ] + get_tag_columns()
     ws.append(headers)
     
     try:
@@ -342,6 +433,12 @@ def export_lambda_functions(ws, lambda_client, ec2, header_font, header_fill, he
                 vpc_info = {'name': 'N/A', 'cidr': 'N/A'}
                 subnet_names = []
             
+            # Get tags for Lambda function
+            tag_values = get_tag_values(func.get('Tags', {}))
+            # Note: Lambda tags come as dict {'Key': 'Value'}, need to convert
+            lambda_tags = [{'Key': k, 'Value': v} for k, v in func.get('Tags', {}).items()]
+            tag_values = get_tag_values(lambda_tags)
+            
             ws.append([
                 func['FunctionName'],
                 func.get('Runtime', 'N/A'),
@@ -355,7 +452,7 @@ def export_lambda_functions(ws, lambda_client, ec2, header_font, header_fill, he
                 ', '.join(subnet_ids) if subnet_ids else 'N/A',
                 ', '.join(subnet_names) if subnet_names else 'N/A',
                 ', '.join(security_groups) if security_groups else 'N/A'
-            ])
+            ] + tag_values)
     except Exception as e:
         print(f"    Error: {e}")
     
@@ -369,7 +466,7 @@ def export_efs_filesystems(ws, efs, header_font, header_fill, header_alignment):
         'File System ID', 'Name', 'Creation Time', 'Life Cycle State',
         'Performance Mode', 'Throughput Mode', 'Encrypted', 'Size (GB)',
         'Mount Targets', 'VPC IDs', 'Subnet IDs', 'Availability Zones'
-    ]
+    ] + get_tag_columns()
     ws.append(headers)
     
     try:
@@ -419,7 +516,7 @@ def export_ecs_services(ws, ecs, ec2, header_font, header_fill, header_alignment
         'Running Count', 'Launch Type', 'Task Definition',
         'Storage Type', 'Volume Size (GB)', 'Volume Type', 'Volume IOPS',
         'VPC ID', 'Subnet IDs', 'Security Groups', 'Load Balancers'
-    ]
+    ] + get_tag_columns()
     ws.append(headers)
     
     try:
@@ -523,7 +620,7 @@ def export_eks_clusters(ws, eks, ec2, header_font, header_fill, header_alignment
         'Cluster Name', 'Version', 'Status', 'Endpoint',
         'Created At', 'VPC ID', 'VPC Name', 'VPC CIDR',
         'Subnet IDs', 'Security Group IDs', 'Role ARN'
-    ]
+    ] + get_tag_columns()
     ws.append(headers)
     
     try:
@@ -564,7 +661,7 @@ def export_elasticache_clusters(ws, elasticache, ec2, header_font, header_fill, 
         'Status', 'Num Cache Nodes', 'Preferred AZ',
         'VPC ID', 'VPC Name', 'VPC CIDR', 'Subnet Group',
         'Security Groups', 'Endpoint'
-    ]
+    ] + get_tag_columns()
     ws.append(headers)
     
     try:
@@ -661,7 +758,7 @@ def export_mq_brokers(ws, mq, ec2, header_font, header_fill, header_alignment):
         'Deployment Mode', 'Instance Type', 'Status',
         'VPC ID', 'VPC Name', 'VPC CIDR',
         'Subnet IDs', 'Security Groups', 'Endpoints'
-    ]
+    ] + get_tag_columns()
     ws.append(headers)
     
     try:
@@ -718,7 +815,7 @@ def export_load_balancers(ws, elbv2, ec2, header_font, header_fill, header_align
         'VPC ID', 'VPC Name', 'VPC CIDR',
         'Availability Zones', 'Subnet IDs', 'Security Groups',
         'IP Address Type'
-    ]
+    ] + get_tag_columns()
     ws.append(headers)
     
     try:
@@ -762,7 +859,7 @@ def export_personalize(ws, personalize, header_font, header_fill, header_alignme
         'Campaign Name', 'Campaign ARN', 'Status',
         'Solution Version ARN', 'Min Provisioned TPS',
         'Created Time', 'Last Updated'
-    ]
+    ] + get_tag_columns()
     ws.append(headers)
     
     try:
@@ -799,7 +896,7 @@ def export_cloudwatch_alarms(ws, cloudwatch, header_font, header_fill, header_al
         'Statistic', 'Period (sec)', 'Threshold', 'Comparison Operator',
         'Evaluation Periods', 'Actions Enabled', 'Alarm Actions',
         'Dimensions'
-    ]
+    ] + get_tag_columns()
     ws.append(headers)
     
     try:
@@ -835,7 +932,7 @@ def export_cloudwatch_log_groups(ws, logs, header_font, header_fill, header_alig
     headers = [
         'Log Group Name', 'Creation Time', 'Retention (Days)',
         'Stored Bytes', 'Metric Filter Count', 'KMS Key ID'
-    ]
+    ] + get_tag_columns()
     ws.append(headers)
     
     try:
@@ -862,7 +959,7 @@ def export_cloudwatch_log_groups(ws, logs, header_font, header_fill, header_alig
     apply_header_style(ws, header_font, header_fill, header_alignment)
 
 def export_dynamodb_tables(ws, dynamodb, header_font, header_fill, header_alignment):
-    """Export DynamoDB Tables"""
+    """Export DynamoDB Tables with tags"""
     print("  - Exporting DynamoDB Tables...")
     
     headers = [
@@ -872,7 +969,7 @@ def export_dynamodb_tables(ws, dynamodb, header_font, header_fill, header_alignm
         'Partition Key', 'Sort Key', 'Global Secondary Indexes',
         'Local Secondary Indexes', 'Stream Enabled', 'Point-in-time Recovery',
         'Encryption Type'
-    ]
+    ] + get_tag_columns()
     ws.append(headers)
     
     try:
@@ -915,6 +1012,13 @@ def export_dynamodb_tables(ws, dynamodb, header_font, header_fill, header_alignm
                 
                 encryption_type = table.get('SSEDescription', {}).get('SSEType', 'N/A')
                 
+                # Get tags
+                try:
+                    tags_response = dynamodb.list_tags_of_resource(ResourceArn=table['TableArn'])
+                    tag_values = get_tag_values(tags_response.get('Tags', []))
+                except:
+                    tag_values = get_tag_values([])
+                
                 ws.append([
                     table['TableName'],
                     table['TableStatus'],
@@ -932,7 +1036,7 @@ def export_dynamodb_tables(ws, dynamodb, header_font, header_fill, header_alignm
                     stream_enabled,
                     pitr_enabled,
                     encryption_type
-                ])
+                ] + tag_values)
             except Exception as e:
                 print(f"    Error processing table {table_name}: {e}")
     except Exception as e:
@@ -949,7 +1053,7 @@ def export_transfer_family(ws, transfer, ec2, header_font, header_fill, header_a
         'Protocols', 'Identity Provider Type', 'Logging Role',
         'VPC ID', 'VPC Name', 'VPC CIDR', 'Subnet IDs',
         'Security Group IDs', 'User Count'
-    ]
+    ] + get_tag_columns()
     ws.append(headers)
     
     try:
@@ -1011,7 +1115,7 @@ def export_vpc_summary(ws, ec2, region, header_font, header_fill, header_alignme
     """Export VPC summary"""
     print("  - Exporting VPC summary...")
     
-    headers = ['VPC ID', 'VPC Name', 'CIDR Block', 'State', 'Default VPC', 'Region']
+    headers = ['VPC ID', 'VPC Name', 'CIDR Block', 'State', 'Default VPC', 'Region'] + get_tag_columns()
     ws.append(headers)
     
     try:
@@ -1034,16 +1138,15 @@ def export_vpc_summary(ws, ec2, region, header_font, header_fill, header_alignme
     apply_header_style(ws, header_font, header_fill, header_alignment)
 
 def export_s3_buckets(ws, s3, header_font, header_fill, header_alignment):
-    """Export S3 Buckets with detailed information"""
+    """Export S3 Buckets with detailed information and tags"""
     print("  - Exporting S3 Buckets...")
     
     headers = [
         'Bucket Name', 'Creation Date', 'Region',
         'Versioning Status', 'Encryption Type', 'Public Access Block',
-        'Total Objects', 'Total Size (GB)', 'Storage Classes',
         'Lifecycle Rules', 'Replication Status', 'Logging Enabled',
-        'Website Hosting', 'Tags'
-    ]
+        'Website Hosting'
+    ] + get_tag_columns()
     ws.append(headers)
     
     try:
@@ -1086,18 +1189,6 @@ def export_s3_buckets(ws, s3, header_font, header_fill, header_alignment):
                 except:
                     public_access_status = 'Not Configured'
                 
-                # Get bucket metrics (object count and size)
-                try:
-                    cloudwatch = boto3.client('cloudwatch', region_name=region)
-                    # Note: This requires CloudWatch metrics to be enabled
-                    total_objects = 'N/A'
-                    total_size_gb = 'N/A'
-                    storage_classes = 'N/A'
-                except:
-                    total_objects = 'N/A'
-                    total_size_gb = 'N/A'
-                    storage_classes = 'N/A'
-                
                 # Get lifecycle rules
                 try:
                     lifecycle = s3.get_bucket_lifecycle_configuration(Bucket=bucket_name)
@@ -1128,10 +1219,10 @@ def export_s3_buckets(ws, s3, header_font, header_fill, header_alignment):
                 
                 # Get tags
                 try:
-                    tags = s3.get_bucket_tagging(Bucket=bucket_name)
-                    tag_list = ', '.join([f"{tag['Key']}={tag['Value']}" for tag in tags.get('TagSet', [])])
+                    tags_response = s3.get_bucket_tagging(Bucket=bucket_name)
+                    tag_values = get_tag_values(tags_response.get('TagSet', []))
                 except:
-                    tag_list = 'N/A'
+                    tag_values = get_tag_values([])
                 
                 ws.append([
                     bucket_name,
@@ -1140,15 +1231,11 @@ def export_s3_buckets(ws, s3, header_font, header_fill, header_alignment):
                     versioning_status,
                     encryption_type,
                     public_access_status,
-                    total_objects,
-                    total_size_gb,
-                    storage_classes,
                     lifecycle_count,
                     replication_status,
                     logging_enabled,
-                    website_hosting,
-                    tag_list
-                ])
+                    website_hosting
+                ] + tag_values)
             except Exception as e:
                 print(f"    Error processing bucket {bucket_name}: {e}")
                 
@@ -1165,7 +1252,7 @@ def export_s3_glacier_vaults(ws, glacier, header_font, header_fill, header_align
         'Vault Name', 'Vault ARN', 'Creation Date',
         'Last Inventory Date', 'Number of Archives', 'Size (GB)',
         'Notifications Enabled', 'SNS Topic'
-    ]
+    ] + get_tag_columns()
     ws.append(headers)
     
     try:
@@ -1212,7 +1299,7 @@ def export_cognito_user_pools(ws, cognito_idp, header_font, header_fill, header_
         'Phone Verification', 'Auto Verified Attributes', 'Password Policy',
         'Lambda Triggers', 'User Pool Clients', 'Domain Name',
         'Estimated Users'
-    ]
+    ] + get_tag_columns()
     ws.append(headers)
     
     try:
@@ -1289,7 +1376,7 @@ def export_cognito_identity_pools(ws, cognito_identity, header_font, header_fill
         'Allow Unauthenticated Access', 'Identity Providers',
         'Cognito User Pools', 'SAML Providers', 
         'OpenID Connect Providers', 'Developer Providers'
-    ]
+    ] + get_tag_columns()
     ws.append(headers)
     
     try:
