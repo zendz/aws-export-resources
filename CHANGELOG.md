@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.4] - 2025-10-01
+
+### Enhanced
+- **ECS Clusters AWS Batch Filter**: Improved AWS Batch cluster filtering precision
+  - Updated filter to specifically target clusters starting with "AWSBatch-"
+  - Based on real AWS Batch cluster naming patterns (e.g., AWSBatch-environment-uuid)
+  - Prevents filtering of normal ECS clusters that contain "batch" in their names
+  - More accurate identification of AWS Batch managed clusters vs user-created ECS clusters
+
+### Fixed
+- **ECS Clusters Export**: Eliminates AWS Batch cluster noise from ECS exports
+- **Filter Precision**: Reduces false positives in AWS Batch cluster detection
+
 ## [1.5.3] - 2025-10-01
 
 ### Fixed

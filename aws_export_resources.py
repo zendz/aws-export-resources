@@ -6,7 +6,7 @@
 # Organization: Gosoft (Thailand) Co., Ltd.
 # Position: Expert DevOps Engineer, Data Science and Data Engineering Team
 # Contact: GitHub Issues Only - https://github.com/zendz/aws-export-resources/issues
-# Version: 1.5.3
+# Version: 1.5.4
 # Created: September 20, 2025
 # Last Updated: October 01, 2025
 # License: MIT License
@@ -665,13 +665,13 @@ def export_ecs_services(ws, ecs, ec2, header_font, header_fill, header_alignment
     apply_header_style(ws, header_font, header_fill, header_alignment)
 
 def export_ecs_clusters(ws, ecs, ec2, header_font, header_fill, header_alignment):
-    """Export ECS Clusters"""
-    print("  - Exporting ECS Clusters...")
+    """Export ECS Clusters (excludes AWS Batch clusters)"""
+    print("  - Exporting ECS Clusters (excluding AWS Batch clusters)...")
     
     headers = [
         'Cluster Name', 'Status', 'Active Services Count', 'Running Tasks Count',
         'Pending Tasks Count', 'Active Container Instances', 'Statistics',
-        'Capacity Providers', 'Default Capacity Provider Strategy', 'Tags',
+        'Capacity Providers', 'Default Capacity Provider Strategy',
         'Configuration', 'Service Connect Defaults', 'ARN', 'Create Date'
     ] + get_tag_columns()
     ws.append(headers)
@@ -693,6 +693,12 @@ def export_ecs_clusters(ws, ecs, ec2, header_font, header_fill, header_alignment
         
         for cluster in clusters_details.get('clusters', []):
             cluster_name = cluster['clusterName']
+            
+            # Filter out AWS Batch clusters
+            # AWS Batch clusters always start with "AWSBatch-" followed by environment/UUID
+            if cluster_name.startswith('AWSBatch-'):
+                print(f"    Skipping AWS Batch cluster: {cluster_name}")
+                continue
             
             # Get statistics
             statistics = cluster.get('statistics', [])
@@ -743,7 +749,7 @@ def export_ecs_clusters(ws, ecs, ec2, header_font, header_fill, header_alignment
                 sanitize_excel_data(stats_str),
                 sanitize_excel_data(capacity_providers_str),
                 sanitize_excel_data(strategy_str),
-                sanitize_excel_data(', '.join([tag.get('Key', '') + ':' + tag.get('Value', '') for tag in cluster_tags[:3]])),  # Show first 3 tags
+                # sanitize_excel_data(', '.join([tag.get('Key', '') + ':' + tag.get('Value', '') for tag in cluster_tags[:3]])),  # Show first 3 tags
                 sanitize_excel_data(config_str),
                 sanitize_excel_data(service_connect_ns),
                 sanitize_excel_data(cluster['clusterArn']),
