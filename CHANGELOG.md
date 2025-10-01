@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2025-10-01
+
+### Added
+- Separated configuration into dedicated `config.py` file
+- Added `config_example.py` template for easy setup
+- Added `test_config.py` utility for configuration validation
+- Comprehensive documentation and security improvements
+- Professional contact information with GitHub Issues only policy
+
+### Changed
+- Updated all documentation to use `python3` instead of `python`
+- Moved from email contact to GitHub Issues only for security
+- Enhanced project structure with proper file organization
+
+### Security
+- Implemented email protection against bot scanning
+- Added `config.py` to .gitignore to prevent credential exposure
+- Created SECURITY.md with comprehensive security guidelines
+- Removed email addresses from all public documentation
+
+### Documentation
+- Updated README.md with configuration section and python3 usage
+- Enhanced CONTRIBUTING.md with config setup instructions
+- Added professional author attribution with organization details
+- Improved project setup and usage instructions
+
+### Authors
+- Nattait Nandawarang - Gosoft (Thailand) Co., Ltd.
+
 ## [1.4.0] - 2025-10-01
 
 ### Added

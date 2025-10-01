@@ -6,7 +6,7 @@
 # Organization: Gosoft (Thailand) Co., Ltd.
 # Position: Expert DevOps Engineer, Data Science and Data Engineering Team
 # Contact: GitHub Issues Only - https://github.com/zendz/aws-export-resources/issues
-# Version: 1.4.0
+# Version: 1.4.1
 # Created: September 20, 2025
 # Last Updated: October 01, 2025
 # License: MIT License
@@ -23,11 +23,11 @@
 #   - AWS CLI configured with appropriate profiles
 #
 # Installation:
-#   pip install boto3 openpyxl
+#   pip3 install boto3 openpyxl
 #
 # Usage:
-#   python aws_export_resources.py                    # Use configured profiles
-#   python aws_export_resources.py profile1 profile2  # Use specific profiles
+#   python3 aws_export_resources.py                    # Use configured profiles
+#   python3 aws_export_resources.py profile1 profile2  # Use specific profiles
 #
 # GitHub: https://github.com/zendz/aws-export-resources/wiki
 # Documentation: https://github.com/zendz/aws-export-resources/wiki
@@ -43,29 +43,22 @@ import concurrent.futures
 from threading import Lock
 import time
 
+# Import configuration
+from config import (
+    AWS_PROFILES,
+    COMMON_TAG_KEYS,
+    MAX_WORKERS,
+    ENABLED_SERVICES,
+    AWS_REGIONS,
+    EXCEL_STYLING,
+    TIMEOUTS,
+    RETRY_CONFIG,
+    LOGGING_CONFIG,
+    ADVANCED_OPTIONS
+)
+
 # Add this near the top of your script, after imports
 write_lock = Lock()
-
-# ==================== CONFIGURATION ====================
-# List your AWS profile names here
-AWS_PROFILES = [
-    'production',
-    'staging',
-    'dev'
-]
-
-# Add this section after imports and before the export functions
-
-# ==================== TAG EXTRACTION CONFIGURATION ====================
-COMMON_TAG_KEYS = [
-    'Service',
-    'System',
-    'Environment',
-    'Project',
-    'Createby',
-    'CostCatagory',
-    'Name'
-]
 
 def extract_tags(aws_tags):
     """

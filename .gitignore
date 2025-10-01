@@ -132,6 +132,9 @@ dmypy.json
 .aws/credentials
 .aws/config
 
+# Configuration files (may contain sensitive profile names)
+config.py
+
 # Excel files (output)
 aws_resources_*.xlsx
 

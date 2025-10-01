@@ -1,6 +1,15 @@
 # AWS Export Resources
 
-A Python tool to export AWS resources across multiple services and regions to an Excel spreadsheet for inventory management and compliance reporting.
+A Python tool to ex3. Configure your AWS credentials:
+   ```bash
+   aws configure
+   ```
+   Or use environment variables, IAM roles, or AWS profiles.
+
+4. Test your configuration:
+   ```bash
+   python3 test_config.py
+   ```AWS resources across multiple services and regions to an Excel spreadsheet for inventory management and compliance reporting.
 
 ## Features
 
@@ -38,7 +47,7 @@ A Python tool to export AWS resources across multiple services and regions to an
 
 2. Install dependencies:
    ```bash
-   pip install -r requirements.txt
+   pip3 install -r requirements.txt
    ```
 
 3. Configure AWS credentials:
@@ -52,13 +61,13 @@ A Python tool to export AWS resources across multiple services and regions to an
 ### Basic Usage
 
 ```bash
-python aws_export_resources.py
+python3 aws_export_resources.py
 ```
 
 ### With Custom Profile
 
 ```bash
-AWS_PROFILE=your-profile python aws_export_resources.py
+AWS_PROFILE=your-profile python3 aws_export_resources.py
 ```
 
 ### Command Line Options
@@ -78,6 +87,38 @@ The tool generates an Excel file named `aws_resources_DDMMYY-HHMM_ACCOUNT-ID-PRO
 - **Styled Formatting**: Color-coded headers and proper formatting
 
 ## Configuration
+
+### Basic Configuration
+
+Edit `config.py` to customize the tool for your environment:
+
+```python
+# AWS Profiles to scan
+AWS_PROFILES = [
+    'production',
+    'staging',
+    'dev'
+]
+
+# Common tags to extract as columns
+COMMON_TAG_KEYS = [
+    'Service',
+    'Environment',
+    'Project',
+    'Name'
+]
+```
+
+### Advanced Configuration
+
+The `config.py` file provides extensive configuration options:
+
+- **AWS Services**: Enable/disable specific services to scan
+- **Regions**: Specify regions to scan or scan all regions
+- **Threading**: Configure parallel processing settings
+- **Excel Styling**: Customize output formatting
+- **Error Handling**: Configure retry logic and timeouts
+- **Security**: Enable compliance and audit features
 
 ### AWS Credentials
 
@@ -99,12 +140,15 @@ The tool supports multiple authentication methods:
 
 ### Customization
 
-You can customize the tool by modifying:
+You can customize the tool by modifying `config.py`:
 
-- **Services to scan**: Edit the service list in the main function
-- **Regions**: Modify the region list or use specific regions
-- **Output format**: Customize Excel styling and structure
-- **Filters**: Add resource filtering logic
+- **Services to scan**: Edit `ENABLED_SERVICES` list
+- **Regions**: Modify `AWS_REGIONS` setting
+- **AWS Profiles**: Update `AWS_PROFILES` list
+- **Tag extraction**: Customize `COMMON_TAG_KEYS`
+- **Output format**: Adjust `EXCEL_STYLING` options
+- **Performance**: Tune `MAX_WORKERS` and `TIMEOUTS`
+- **Security**: Configure `SECURITY_SETTINGS`
 
 ## Performance Considerations
 
@@ -173,9 +217,13 @@ For issues, questions, or feature requests:
 
 ## Changelog
 
-### Version 1.0.0
-- Initial release
-- Support for 20+ AWS services
-- Multi-region scanning
-- Excel export functionality
-- Concurrent processing
+### Version 1.4.1
+- Configuration separation into dedicated config.py file
+- Updated documentation to use python3
+- Enhanced security with GitHub Issues only policy
+- Added configuration validation tools
+
+### Version 1.4.0
+- Comprehensive tag extraction system
+- Enhanced parallel processing capabilities
+- Advanced Excel formatting and styling

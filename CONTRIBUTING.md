@@ -26,10 +26,11 @@ Thank you for your interest in contributing to this project! We welcome contribu
 1. Clone your fork of the repository
 2. Install dependencies:
    ```bash
-   pip install -r requirements.txt
+   pip3 install -r requirements.txt
    ```
 3. Configure your AWS credentials
-4. Test your changes thoroughly
+4. Edit `config.py` to set up your AWS profiles and preferences
+5. Test your changes thoroughly
 
 ## Testing
 
