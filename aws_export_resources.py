@@ -29,7 +29,7 @@
 #   python main9.py                    # Use configured profiles
 #   python main9.py profile1 profile2  # Use specific profiles
 #
-# GitHub: https://github.com/your-org/aws-export-resources
+# GitHub: https://github.com/zendz/aws-export-resources/wiki
 # Documentation: https://github.com/zendz/aws-export-resources/wiki
 # Changelog: See CHANGELOG.md for version history and release notes
 #
