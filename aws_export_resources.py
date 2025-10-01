@@ -1760,6 +1760,223 @@ def export_kms_keys(ws, kms, header_font, header_fill, header_alignment):
     
     apply_header_style(ws, header_font, header_fill, header_alignment)
 
+def export_api_gateway(ws, apigateway, header_font, header_fill, header_alignment):
+    """Export API Gateway information"""
+    print("  - Exporting API Gateway...")
+    
+    headers = [
+        'API Name', 'API ID', 'API Type', 'Created Date', 'Description',
+        'API Endpoint', 'Stage Name', 'Stage Endpoint', 'ARN'
+    ] + get_tag_columns()
+    ws.append(headers)
+    
+    try:
+        # Get REST APIs (v1)
+        rest_apis_response = apigateway.get_rest_apis()
+        apis = rest_apis_response.get('items', [])
+        
+        for api in apis:
+            try:
+                api_id = api.get('id', 'N/A')
+                api_name = api.get('name', 'N/A')
+                api_type = 'REST'
+                
+                # Handle created date
+                created_date = api.get('createdDate', 'N/A')
+                if hasattr(created_date, 'strftime'):
+                    created_date = created_date.strftime('%Y-%m-%d %H:%M:%S')
+                elif created_date == 'N/A':
+                    created_date = 'N/A'
+                else:
+                    created_date = str(created_date)
+                
+                description = api.get('description', 'N/A')
+                api_endpoint = f"https://{api_id}.execute-api.{apigateway.meta.region_name}.amazonaws.com"
+                api_arn = f"arn:aws:apigateway:{apigateway.meta.region_name}::/restapis/{api_id}"
+                
+                # Get API-level tags - API object already contains tags
+                api_tags = api.get('tags', {})
+                # Ensure it's a dictionary
+                if not isinstance(api_tags, dict):
+                    api_tags = {}
+                
+                # Convert API Gateway tag format to standard AWS tag format
+                # API Gateway: {'key': 'value'} -> AWS format: [{'Key': 'key', 'Value': 'value'}]
+                api_tags_formatted = [{'Key': k, 'Value': v} for k, v in api_tags.items()]
+                
+                # Try to get stages
+                stages_found = False
+                try:
+                    stages_response = apigateway.get_stages(restApiId=api_id)
+                    stage_items = stages_response.get('item', [])
+                    
+                    if isinstance(stage_items, list) and stage_items:
+                        for stage in stage_items:
+                            if isinstance(stage, dict):
+                                stage_name = stage.get('stageName', 'N/A')
+                                stage_endpoint = f"{api_endpoint}/{stage_name}" if stage_name != 'N/A' else 'N/A'
+                                
+                                # Combine API tags with stage tags
+                                combined_tags = api_tags_formatted.copy()
+                                stage_tags = stage.get('tags', {})
+                                if isinstance(stage_tags, dict):
+                                    # Convert stage tags to AWS format too
+                                    stage_tags_formatted = [{'Key': k, 'Value': v} for k, v in stage_tags.items()]
+                                    combined_tags.extend(stage_tags_formatted)
+                                
+                                row_data = [
+                                    sanitize_excel_data(api_name),
+                                    sanitize_excel_data(api_id),
+                                    sanitize_excel_data(api_type),
+                                    sanitize_excel_data(created_date),
+                                    sanitize_excel_data(description),
+                                    sanitize_excel_data(api_endpoint),
+                                    sanitize_excel_data(stage_name),
+                                    sanitize_excel_data(stage_endpoint),
+                                    sanitize_excel_data(api_arn)
+                                ] + get_tag_values(combined_tags)
+                                
+                                ws.append(row_data)
+                                stages_found = True
+                            
+                except Exception:
+                    pass  # Will fall back to API-only row
+                
+                # If no stages found or error getting stages, add API without stage info
+                if not stages_found:
+                    row_data = [
+                        sanitize_excel_data(api_name),
+                        sanitize_excel_data(api_id),
+                        sanitize_excel_data(api_type),
+                        sanitize_excel_data(created_date),
+                        sanitize_excel_data(description),
+                        sanitize_excel_data(api_endpoint),
+                        sanitize_excel_data('N/A'),
+                        sanitize_excel_data('N/A'),
+                        sanitize_excel_data(api_arn)
+                    ] + get_tag_values(api_tags_formatted)
+                    
+                    ws.append(row_data)
+                        
+            except Exception as api_error:
+                print(f"    Warning: Could not process REST API {api.get('id', 'unknown')}: {api_error}")
+                
+    except Exception as e:
+        print(f"    Error: {e}")
+    
+    apply_header_style(ws, header_font, header_fill, header_alignment)
+
+def export_ecr(ws, ecr, header_font, header_fill, header_alignment):
+    """Export ECR Repository information"""
+    print("  - Exporting ECR Repositories...")
+    
+    headers = [
+        'Repository Name', 'Repository ARN', 'Repository URI', 'Registry ID',
+        'Created Date', 'Image Tag Mutability', 'Image Scan on Push',
+        'Encryption Type', 'KMS Key', 'Lifecycle Policy', 'Repository Policy',
+        'Image Count', 'Repository Size (MB)', 'Last Push Date'
+    ] + get_tag_columns()
+    ws.append(headers)
+    
+    try:
+        # Get all repositories
+        paginator = ecr.get_paginator('describe_repositories')
+        
+        for page in paginator.paginate():
+            for repo in page['repositories']:
+                try:
+                    repo_name = repo['repositoryName']
+                    repo_arn = repo['repositoryArn']
+                    repo_uri = repo['repositoryUri']
+                    registry_id = repo['registryId']
+                    created_date = repo['createdAt'].strftime('%Y-%m-%d %H:%M:%S')
+                    
+                    # Image tag mutability
+                    tag_mutability = repo.get('imageTagMutability', 'N/A')
+                    
+                    # Image scanning configuration
+                    scan_config = repo.get('imageScanningConfiguration', {})
+                    scan_on_push = 'Yes' if scan_config.get('scanOnPush', False) else 'No'
+                    
+                    # Encryption configuration
+                    encryption_config = repo.get('encryptionConfiguration', {})
+                    encryption_type = encryption_config.get('encryptionType', 'N/A')
+                    kms_key = encryption_config.get('kmsKey', 'N/A') if encryption_type == 'KMS' else 'N/A'
+                    
+                    # Get lifecycle policy
+                    lifecycle_policy = 'No'
+                    try:
+                        ecr.get_lifecycle_policy(repositoryName=repo_name)
+                        lifecycle_policy = 'Yes'
+                    except ecr.exceptions.LifecyclePolicyNotFoundException:
+                        pass
+                    except Exception:
+                        lifecycle_policy = 'N/A'
+                    
+                    # Get repository policy
+                    repository_policy = 'No'
+                    try:
+                        ecr.get_repository_policy(repositoryName=repo_name)
+                        repository_policy = 'Yes'
+                    except ecr.exceptions.RepositoryPolicyNotFoundException:
+                        pass
+                    except Exception:
+                        repository_policy = 'N/A'
+                    
+                    # Get image statistics
+                    image_count = 0
+                    repo_size_mb = 0
+                    last_push_date = 'N/A'
+                    
+                    try:
+                        images = ecr.describe_images(repositoryName=repo_name, maxResults=1000)
+                        image_details = images.get('imageDetails', [])
+                        image_count = len(image_details)
+                        
+                        total_size_bytes = sum(detail.get('imageSizeInBytes', 0) for detail in image_details)
+                        repo_size_mb = round(total_size_bytes / (1024 * 1024), 2) if total_size_bytes > 0 else 0
+                        
+                        # Find most recent push date
+                        if image_details:
+                            latest_push = max(detail.get('imagePushedAt', repo['createdAt']) for detail in image_details)
+                            last_push_date = latest_push.strftime('%Y-%m-%d %H:%M:%S')
+                    except Exception:
+                        pass
+                    
+                    # Get tags
+                    try:
+                        tags_response = ecr.list_tags_for_resource(resourceArn=repo_arn)
+                        repo_tags = tags_response.get('tags', [])
+                    except Exception:
+                        repo_tags = []
+                    
+                    row_data = [
+                        sanitize_excel_data(repo_name),
+                        sanitize_excel_data(repo_arn),
+                        sanitize_excel_data(repo_uri),
+                        sanitize_excel_data(registry_id),
+                        sanitize_excel_data(created_date),
+                        sanitize_excel_data(tag_mutability),
+                        sanitize_excel_data(scan_on_push),
+                        sanitize_excel_data(encryption_type),
+                        sanitize_excel_data(kms_key),
+                        sanitize_excel_data(lifecycle_policy),
+                        sanitize_excel_data(repository_policy),
+                        sanitize_excel_data(str(image_count)),
+                        sanitize_excel_data(str(repo_size_mb)),
+                        sanitize_excel_data(last_push_date)
+                    ] + get_tag_values(repo_tags)
+                    
+                    ws.append(row_data)
+                    
+                except Exception as repo_error:
+                    print(f"    Warning: Could not process repository {repo.get('repositoryName', 'unknown')}: {repo_error}")
+                    
+    except Exception as e:
+        print(f"    Error: {e}")
+    
+    apply_header_style(ws, header_font, header_fill, header_alignment)
+
 def export_with_error_handling(export_func, *args):
     """
     Wrapper function to handle errors in threaded exports
@@ -1826,6 +2043,8 @@ def export_aws_resources_for_profile(profile_name):
         cognito_idp = session.client('cognito-idp')
         cognito_identity = session.client('cognito-identity')
         kms = session.client('kms')
+        ecr = session.client('ecr')
+        apigateway = session.client('apigateway')
         
         # Pre-create all worksheets (thread-safe)
         print("\n  - Creating worksheets...")
@@ -1851,6 +2070,8 @@ def export_aws_resources_for_profile(profile_name):
         ws_cognito_identity = wb.create_sheet("Cognito Identity Pools")
         ws_vpc_endpoints = wb.create_sheet("VPC Endpoints")
         ws_kms = wb.create_sheet("KMS Keys")
+        ws_ecr = wb.create_sheet("ECR Repositories")
+        ws_api_gateway = wb.create_sheet("API Gateway")
         ws_vpc = wb.create_sheet("VPC Summary")
         
         # Define export tasks - each tuple contains (function, worksheet, *args)
@@ -1877,6 +2098,8 @@ def export_aws_resources_for_profile(profile_name):
             (export_cognito_identity_pools, ws_cognito_identity, cognito_identity, header_font, header_fill, header_alignment),
             (export_vpc_endpoints, ws_vpc_endpoints, ec2, header_font, header_fill, header_alignment),
             (export_kms_keys, ws_kms, kms, header_font, header_fill, header_alignment),
+            (export_ecr, ws_ecr, ecr, header_font, header_fill, header_alignment),
+            (export_api_gateway, ws_api_gateway, apigateway, header_font, header_fill, header_alignment),
             (export_vpc_summary, ws_vpc, ec2, region, header_font, header_fill, header_alignment),
         ]
         
