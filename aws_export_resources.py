@@ -1,0 +1,822 @@
+import boto3
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment
+from datetime import datetime
+from botocore.exceptions import ClientError, ProfileNotFound
+
+# ==================== CONFIGURATION ====================
+# List your AWS profile names here
+AWS_PROFILES = [
+    'sdsprd',
+    'sssdev'
+    # 'caidev',
+    # 'caiprd',
+    # 'copcosdev',
+    # 'copcosprd',
+    # 'aoldev',
+    # 'aolprd'
+]
+
+# You can also pass profiles as command line arguments
+# python script.py profile1 profile2 profile3
+# ======================================================
+
+def get_account_info(session):
+    """Get AWS account ID and alias"""
+    try:
+        sts = session.client('sts')
+        account_id = sts.get_caller_identity()['Account']
+        
+        # Try to get account alias
+        iam = session.client('iam')
+        try:
+            aliases = iam.list_account_aliases()
+            account_alias = aliases['AccountAliases'][0] if aliases['AccountAliases'] else f'account-{account_id}'
+        except:
+            account_alias = f'account-{account_id}'
+        
+        return account_id, account_alias
+    except Exception as e:
+        print(f"Error getting account info: {e}")
+        return 'unknown', 'unknown'
+
+def get_subnet_details(ec2_client, subnet_id):
+    """Get subnet name and CIDR block"""
+    try:
+        response = ec2_client.describe_subnets(SubnetIds=[subnet_id])
+        subnet = response['Subnets'][0]
+        subnet_name = next((tag['Value'] for tag in subnet.get('Tags', []) if tag['Key'] == 'Name'), 'N/A')
+        return {
+            'name': subnet_name,
+            'cidr': subnet['CidrBlock'],
+            'az': subnet['AvailabilityZone']
+        }
+    except Exception as e:
+        return {'name': 'N/A', 'cidr': 'N/A', 'az': 'N/A'}
+
+def get_vpc_details(ec2_client, vpc_id):
+    """Get VPC name and CIDR block"""
+    try:
+        response = ec2_client.describe_vpcs(VpcIds=[vpc_id])
+        vpc = response['Vpcs'][0]
+        vpc_name = next((tag['Value'] for tag in vpc.get('Tags', []) if tag['Key'] == 'Name'), 'N/A')
+        return {
+            'name': vpc_name,
+            'cidr': vpc['CidrBlock']
+        }
+    except Exception as e:
+        return {'name': 'N/A', 'cidr': 'N/A'}
+
+def apply_header_style(ws, header_font, header_fill, header_alignment):
+    """Apply styling to header row"""
+    for cell in ws[1]:
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_alignment
+
+def export_ec2_instances(ws, ec2, header_font, header_fill, header_alignment):
+    """Export EC2 instances with EBS details"""
+    print("  - Exporting EC2 instances...")
+    
+    headers = [
+        'Instance ID', 'Name', 'Type', 'State', 
+        'Private IP', 'Public IP', 'Launch Time',
+        'Root Device Type', 'Root Device Name', 'Root Volume Size (GB)',
+        'Total EBS Volumes', 'Total EBS Size (GB)', 'EBS Volume IDs',
+        'EBS Volume Types', 'EBS IOPS', 'EBS Encrypted',
+        'VPC ID', 'VPC Name', 'VPC CIDR',
+        'Subnet ID', 'Subnet Name', 'Subnet CIDR', 'Availability Zone'
+    ]
+    ws.append(headers)
+    
+    try:
+        instances = ec2.describe_instances()
+        for reservation in instances['Reservations']:
+            for instance in reservation['Instances']:
+                name = next((tag['Value'] for tag in instance.get('Tags', []) if tag['Key'] == 'Name'), 'N/A')
+                vpc_id = instance.get('VpcId', 'N/A')
+                subnet_id = instance.get('SubnetId', 'N/A')
+                
+                vpc_info = get_vpc_details(ec2, vpc_id) if vpc_id != 'N/A' else {'name': 'N/A', 'cidr': 'N/A'}
+                subnet_info = get_subnet_details(ec2, subnet_id) if subnet_id != 'N/A' else {'name': 'N/A', 'cidr': 'N/A', 'az': 'N/A'}
+                
+                # Get EBS volumes information
+                block_devices = instance.get('BlockDeviceMappings', [])
+                volume_ids = []
+                volume_types = []
+                volume_sizes = []
+                volume_iops = []
+                encrypted_statuses = []
+                root_volume_size = 'N/A'
+                
+                for block_device in block_devices:
+                    if 'Ebs' in block_device:
+                        volume_id = block_device['Ebs'].get('VolumeId')
+                        if volume_id:
+                            volume_ids.append(volume_id)
+                            
+                            try:
+                                volume_info = ec2.describe_volumes(VolumeIds=[volume_id])['Volumes'][0]
+                                volume_types.append(volume_info.get('VolumeType', 'N/A'))
+                                size = volume_info.get('Size', 0)
+                                volume_sizes.append(size)
+                                volume_iops.append(str(volume_info.get('Iops', 'N/A')))
+                                encrypted_statuses.append('Yes' if volume_info.get('Encrypted', False) else 'No')
+                                
+                                if block_device['DeviceName'] == instance.get('RootDeviceName'):
+                                    root_volume_size = size
+                            except:
+                                volume_types.append('N/A')
+                                volume_sizes.append(0)
+                                volume_iops.append('N/A')
+                                encrypted_statuses.append('N/A')
+                
+                total_ebs_size = sum(volume_sizes)
+                
+                ws.append([
+                    instance['InstanceId'],
+                    name,
+                    instance['InstanceType'],
+                    instance['State']['Name'],
+                    instance.get('PrivateIpAddress', 'N/A'),
+                    instance.get('PublicIpAddress', 'N/A'),
+                    instance['LaunchTime'].strftime('%Y-%m-%d %H:%M:%S'),
+                    instance.get('RootDeviceType', 'N/A'),
+                    instance.get('RootDeviceName', 'N/A'),
+                    root_volume_size,
+                    len(volume_ids),
+                    total_ebs_size,
+                    ', '.join(volume_ids) if volume_ids else 'N/A',
+                    ', '.join(volume_types) if volume_types else 'N/A',
+                    ', '.join(volume_iops) if volume_iops else 'N/A',
+                    ', '.join(encrypted_statuses) if encrypted_statuses else 'N/A',
+                    vpc_id,
+                    vpc_info['name'],
+                    vpc_info['cidr'],
+                    subnet_id,
+                    subnet_info['name'],
+                    subnet_info['cidr'],
+                    subnet_info['az']
+                ])
+    except Exception as e:
+        print(f"    Error: {e}")
+    
+    apply_header_style(ws, header_font, header_fill, header_alignment)
+
+def export_rds_instances(ws, rds, ec2, header_font, header_fill, header_alignment):
+    """Export RDS instances"""
+    print("  - Exporting RDS instances...")
+    
+    headers = [
+        'DB Identifier', 'Engine', 'Engine Version', 
+        'Instance Class', 'Status', 'Endpoint', 'Port', 'Storage (GB)',
+        'Multi-AZ', 'VPC ID', 'VPC Name', 'VPC CIDR',
+        'Subnet Group', 'Subnets', 'Availability Zone'
+    ]
+    ws.append(headers)
+    
+    try:
+        db_instances = rds.describe_db_instances()
+        for db in db_instances['DBInstances']:
+            endpoint = db.get('Endpoint', {}).get('Address', 'N/A')
+            port = db.get('Endpoint', {}).get('Port', 'N/A')
+            
+            vpc_id = db.get('DBSubnetGroup', {}).get('VpcId', 'N/A')
+            vpc_info = get_vpc_details(ec2, vpc_id) if vpc_id != 'N/A' else {'name': 'N/A', 'cidr': 'N/A'}
+            
+            subnet_group_name = db.get('DBSubnetGroup', {}).get('DBSubnetGroupName', 'N/A')
+            subnets = db.get('DBSubnetGroup', {}).get('Subnets', [])
+            subnet_list = ', '.join([s['SubnetIdentifier'] for s in subnets])
+            
+            ws.append([
+                db['DBInstanceIdentifier'],
+                db['Engine'],
+                db['EngineVersion'],
+                db['DBInstanceClass'],
+                db['DBInstanceStatus'],
+                endpoint,
+                port,
+                db['AllocatedStorage'],
+                'Yes' if db['MultiAZ'] else 'No',
+                vpc_id,
+                vpc_info['name'],
+                vpc_info['cidr'],
+                subnet_group_name,
+                subnet_list,
+                db['AvailabilityZone']
+            ])
+    except Exception as e:
+        print(f"    Error: {e}")
+    
+    apply_header_style(ws, header_font, header_fill, header_alignment)
+
+def export_lambda_functions(ws, lambda_client, ec2, header_font, header_fill, header_alignment):
+    """Export Lambda functions"""
+    print("  - Exporting Lambda functions...")
+    
+    headers = [
+        'Function Name', 'Runtime', 'Memory (MB)', 
+        'Timeout (sec)', 'Last Modified', 'Handler',
+        'VPC ID', 'VPC Name', 'VPC CIDR',
+        'Subnet IDs', 'Subnet Names', 'Security Groups'
+    ]
+    ws.append(headers)
+    
+    try:
+        functions = lambda_client.list_functions()
+        for func in functions['Functions']:
+            vpc_config = func.get('VpcConfig', {})
+            vpc_id = vpc_config.get('VpcId', 'No VPC')
+            subnet_ids = vpc_config.get('SubnetIds', [])
+            security_groups = vpc_config.get('SecurityGroupIds', [])
+            
+            if vpc_id != 'No VPC':
+                vpc_info = get_vpc_details(ec2, vpc_id)
+                subnet_names = []
+                for subnet_id in subnet_ids:
+                    subnet_info = get_subnet_details(ec2, subnet_id)
+                    subnet_names.append(subnet_info['name'])
+            else:
+                vpc_info = {'name': 'N/A', 'cidr': 'N/A'}
+                subnet_names = []
+            
+            ws.append([
+                func['FunctionName'],
+                func.get('Runtime', 'N/A'),
+                func['MemorySize'],
+                func['Timeout'],
+                func['LastModified'],
+                func['Handler'],
+                vpc_id,
+                vpc_info['name'],
+                vpc_info['cidr'],
+                ', '.join(subnet_ids) if subnet_ids else 'N/A',
+                ', '.join(subnet_names) if subnet_names else 'N/A',
+                ', '.join(security_groups) if security_groups else 'N/A'
+            ])
+    except Exception as e:
+        print(f"    Error: {e}")
+    
+    apply_header_style(ws, header_font, header_fill, header_alignment)
+
+def export_efs_filesystems(ws, efs, header_font, header_fill, header_alignment):
+    """Export EFS file systems"""
+    print("  - Exporting EFS file systems...")
+    
+    headers = [
+        'File System ID', 'Name', 'Creation Time', 'Life Cycle State',
+        'Performance Mode', 'Throughput Mode', 'Encrypted', 'Size (GB)',
+        'Mount Targets', 'VPC IDs', 'Subnet IDs', 'Availability Zones'
+    ]
+    ws.append(headers)
+    
+    try:
+        file_systems = efs.describe_file_systems()
+        for fs in file_systems['FileSystems']:
+            fs_name = fs.get('Name', 'N/A')
+            
+            try:
+                mount_targets = efs.describe_mount_targets(FileSystemId=fs['FileSystemId'])
+                mt_count = len(mount_targets['MountTargets'])
+                vpc_ids = list(set([mt.get('VpcId', 'N/A') for mt in mount_targets['MountTargets']]))
+                subnet_ids = [mt.get('SubnetId', 'N/A') for mt in mount_targets['MountTargets']]
+                azs = [mt.get('AvailabilityZoneName', 'N/A') for mt in mount_targets['MountTargets']]
+            except:
+                mt_count = 0
+                vpc_ids = ['N/A']
+                subnet_ids = ['N/A']
+                azs = ['N/A']
+            
+            size_gb = fs.get('SizeInBytes', {}).get('Value', 0) / (1024**3)
+            
+            ws.append([
+                fs['FileSystemId'],
+                fs_name,
+                fs['CreationTime'].strftime('%Y-%m-%d %H:%M:%S'),
+                fs['LifeCycleState'],
+                fs.get('PerformanceMode', 'N/A'),
+                fs.get('ThroughputMode', 'N/A'),
+                'Yes' if fs.get('Encrypted', False) else 'No',
+                f"{size_gb:.2f}",
+                mt_count,
+                ', '.join(vpc_ids),
+                ', '.join(subnet_ids),
+                ', '.join(azs)
+            ])
+    except Exception as e:
+        print(f"    Error: {e}")
+    
+    apply_header_style(ws, header_font, header_fill, header_alignment)
+
+def export_ecs_services(ws, ecs, ec2, header_font, header_fill, header_alignment):
+    """Export ECS services"""
+    print("  - Exporting ECS services...")
+    
+    headers = [
+        'Cluster Name', 'Service Name', 'Status', 'Desired Count',
+        'Running Count', 'Launch Type', 'Task Definition',
+        'Storage Type', 'Volume Size (GB)', 'Volume Type', 'Volume IOPS',
+        'VPC ID', 'Subnet IDs', 'Security Groups', 'Load Balancers'
+    ]
+    ws.append(headers)
+    
+    try:
+        clusters = ecs.list_clusters()
+        for cluster_arn in clusters.get('clusterArns', []):
+            cluster_name = cluster_arn.split('/')[-1]
+            
+            services = ecs.list_services(cluster=cluster_arn)
+            if services.get('serviceArns'):
+                service_details = ecs.describe_services(
+                    cluster=cluster_arn,
+                    services=services['serviceArns']
+                )
+                
+                for service in service_details.get('services', []):
+                    network_config = service.get('networkConfiguration', {}).get('awsvpcConfiguration', {})
+                    vpc_id = 'N/A'
+                    subnets = network_config.get('subnets', [])
+                    security_groups = network_config.get('securityGroups', [])
+                    
+                    if subnets:
+                        try:
+                            subnet_response = ec2.describe_subnets(SubnetIds=[subnets[0]])
+                            vpc_id = subnet_response['Subnets'][0]['VpcId']
+                        except:
+                            pass
+                    
+                    load_balancers = ', '.join([lb.get('targetGroupArn', '').split('/')[-1] 
+                                                for lb in service.get('loadBalancers', [])])
+                    
+                    task_def_arn = service['taskDefinition']
+                    storage_type = 'N/A'
+                    volume_size = 'N/A'
+                    volume_type = 'N/A'
+                    volume_iops = 'N/A'
+                    
+                    try:
+                        task_def = ecs.describe_task_definition(taskDefinition=task_def_arn)['taskDefinition']
+                        
+                        ephemeral_storage = task_def.get('ephemeralStorage', {})
+                        if ephemeral_storage:
+                            storage_type = 'Ephemeral (Fargate)'
+                            volume_size = ephemeral_storage.get('sizeInGiB', 20)
+                        
+                        volumes = task_def.get('volumes', [])
+                        ebs_volumes = []
+                        for volume in volumes:
+                            if 'efsVolumeConfiguration' in volume:
+                                storage_type = 'EFS'
+                            elif 'dockerVolumeConfiguration' in volume:
+                                docker_config = volume['dockerVolumeConfiguration']
+                                driver_opts = docker_config.get('driverOpts', {})
+                                if 'size' in driver_opts:
+                                    ebs_volumes.append({
+                                        'size': driver_opts.get('size', 'N/A'),
+                                        'type': driver_opts.get('type', 'gp3'),
+                                        'iops': driver_opts.get('iops', 'N/A')
+                                    })
+                        
+                        if ebs_volumes:
+                            storage_type = 'EBS Volume'
+                            volume_size = ', '.join([str(v['size']) for v in ebs_volumes])
+                            volume_type = ', '.join([str(v['type']) for v in ebs_volumes])
+                            volume_iops = ', '.join([str(v['iops']) for v in ebs_volumes])
+                        elif storage_type == 'N/A' and service.get('launchType') == 'FARGATE':
+                            storage_type = 'Ephemeral (Fargate)'
+                            volume_size = 20
+                        elif storage_type == 'N/A':
+                            storage_type = 'Host/Container'
+                            
+                    except Exception as e:
+                        pass
+                    
+                    ws.append([
+                        cluster_name,
+                        service['serviceName'],
+                        service['status'],
+                        service['desiredCount'],
+                        service['runningCount'],
+                        service.get('launchType', 'N/A'),
+                        service['taskDefinition'].split('/')[-1],
+                        storage_type,
+                        volume_size,
+                        volume_type,
+                        volume_iops,
+                        vpc_id,
+                        ', '.join(subnets) if subnets else 'N/A',
+                        ', '.join(security_groups) if security_groups else 'N/A',
+                        load_balancers if load_balancers else 'N/A'
+                    ])
+    except Exception as e:
+        print(f"    Error: {e}")
+    
+    apply_header_style(ws, header_font, header_fill, header_alignment)
+
+def export_eks_clusters(ws, eks, ec2, header_font, header_fill, header_alignment):
+    """Export EKS clusters"""
+    print("  - Exporting EKS clusters...")
+    
+    headers = [
+        'Cluster Name', 'Version', 'Status', 'Endpoint',
+        'Created At', 'VPC ID', 'VPC Name', 'VPC CIDR',
+        'Subnet IDs', 'Security Group IDs', 'Role ARN'
+    ]
+    ws.append(headers)
+    
+    try:
+        clusters = eks.list_clusters()
+        for cluster_name in clusters.get('clusters', []):
+            cluster = eks.describe_cluster(name=cluster_name)['cluster']
+            
+            vpc_id = cluster.get('resourcesVpcConfig', {}).get('vpcId', 'N/A')
+            vpc_info = get_vpc_details(ec2, vpc_id) if vpc_id != 'N/A' else {'name': 'N/A', 'cidr': 'N/A'}
+            
+            subnet_ids = cluster.get('resourcesVpcConfig', {}).get('subnetIds', [])
+            security_group_ids = cluster.get('resourcesVpcConfig', {}).get('securityGroupIds', [])
+            
+            ws.append([
+                cluster['name'],
+                cluster.get('version', 'N/A'),
+                cluster['status'],
+                cluster.get('endpoint', 'N/A'),
+                cluster['createdAt'].strftime('%Y-%m-%d %H:%M:%S'),
+                vpc_id,
+                vpc_info['name'],
+                vpc_info['cidr'],
+                ', '.join(subnet_ids) if subnet_ids else 'N/A',
+                ', '.join(security_group_ids) if security_group_ids else 'N/A',
+                cluster.get('roleArn', 'N/A')
+            ])
+    except Exception as e:
+        print(f"    Error: {e}")
+    
+    apply_header_style(ws, header_font, header_fill, header_alignment)
+
+def export_elasticache_clusters(ws, elasticache, ec2, header_font, header_fill, header_alignment):
+    """Export ElastiCache clusters"""
+    print("  - Exporting ElastiCache clusters...")
+    
+    headers = [
+        'Cluster ID', 'Engine', 'Engine Version', 'Node Type',
+        'Status', 'Num Cache Nodes', 'Preferred AZ',
+        'VPC ID', 'VPC Name', 'VPC CIDR', 'Subnet Group',
+        'Security Groups', 'Endpoint'
+    ]
+    ws.append(headers)
+    
+    try:
+        redis_clusters = elasticache.describe_replication_groups()
+        for cluster in redis_clusters.get('ReplicationGroups', []):
+            node_groups = cluster.get('NodeGroups', [{}])[0]
+            endpoint = node_groups.get('PrimaryEndpoint', {}).get('Address', 'N/A')
+            
+            cache_cluster_id = cluster.get('MemberClusters', [''])[0]
+            vpc_id = 'N/A'
+            vpc_info = {'name': 'N/A', 'cidr': 'N/A'}
+            subnet_group_name = 'N/A'
+            security_groups = []
+            
+            if cache_cluster_id:
+                try:
+                    cache_cluster = elasticache.describe_cache_clusters(
+                        CacheClusterId=cache_cluster_id
+                    )['CacheClusters'][0]
+                    subnet_group_name = cache_cluster.get('CacheSubnetGroupName', 'N/A')
+                    security_groups = [sg['SecurityGroupId'] for sg in cache_cluster.get('SecurityGroups', [])]
+                    
+                    if subnet_group_name != 'N/A':
+                        subnet_group = elasticache.describe_cache_subnet_groups(
+                            CacheSubnetGroupName=subnet_group_name
+                        )['CacheSubnetGroups'][0]
+                        vpc_id = subnet_group.get('VpcId', 'N/A')
+                        vpc_info = get_vpc_details(ec2, vpc_id) if vpc_id != 'N/A' else {'name': 'N/A', 'cidr': 'N/A'}
+                except:
+                    pass
+            
+            ws.append([
+                cluster['ReplicationGroupId'],
+                'Redis',
+                cluster.get('CacheNodeType', 'N/A'),
+                cluster.get('CacheNodeType', 'N/A'),
+                cluster['Status'],
+                len(cluster.get('MemberClusters', [])),
+                node_groups.get('PrimaryEndpoint', {}).get('AvailabilityZone', 'N/A'),
+                vpc_id,
+                vpc_info['name'],
+                vpc_info['cidr'],
+                subnet_group_name,
+                ', '.join(security_groups) if security_groups else 'N/A',
+                endpoint
+            ])
+        
+        memcached_clusters = elasticache.describe_cache_clusters()
+        for cluster in memcached_clusters.get('CacheClusters', []):
+            if cluster.get('Engine') == 'memcached':
+                subnet_group_name = cluster.get('CacheSubnetGroupName', 'N/A')
+                vpc_id = 'N/A'
+                vpc_info = {'name': 'N/A', 'cidr': 'N/A'}
+                
+                if subnet_group_name != 'N/A':
+                    try:
+                        subnet_group = elasticache.describe_cache_subnet_groups(
+                            CacheSubnetGroupName=subnet_group_name
+                        )['CacheSubnetGroups'][0]
+                        vpc_id = subnet_group.get('VpcId', 'N/A')
+                        vpc_info = get_vpc_details(ec2, vpc_id) if vpc_id != 'N/A' else {'name': 'N/A', 'cidr': 'N/A'}
+                    except:
+                        pass
+                
+                security_groups = [sg['SecurityGroupId'] for sg in cluster.get('SecurityGroups', [])]
+                endpoint = cluster.get('ConfigurationEndpoint', {}).get('Address', 'N/A')
+                
+                ws.append([
+                    cluster['CacheClusterId'],
+                    cluster['Engine'],
+                    cluster.get('EngineVersion', 'N/A'),
+                    cluster.get('CacheNodeType', 'N/A'),
+                    cluster['CacheClusterStatus'],
+                    cluster.get('NumCacheNodes', 0),
+                    cluster.get('PreferredAvailabilityZone', 'N/A'),
+                    vpc_id,
+                    vpc_info['name'],
+                    vpc_info['cidr'],
+                    subnet_group_name,
+                    ', '.join(security_groups) if security_groups else 'N/A',
+                    endpoint
+                ])
+    except Exception as e:
+        print(f"    Error: {e}")
+    
+    apply_header_style(ws, header_font, header_fill, header_alignment)
+
+def export_mq_brokers(ws, mq, ec2, header_font, header_fill, header_alignment):
+    """Export Amazon MQ brokers"""
+    print("  - Exporting Amazon MQ brokers...")
+    
+    headers = [
+        'Broker Name', 'Broker ID', 'Engine Type', 'Engine Version',
+        'Deployment Mode', 'Instance Type', 'Status',
+        'VPC ID', 'VPC Name', 'VPC CIDR',
+        'Subnet IDs', 'Security Groups', 'Endpoints'
+    ]
+    ws.append(headers)
+    
+    try:
+        brokers = mq.list_brokers()
+        for broker_summary in brokers.get('BrokerSummaries', []):
+            broker = mq.describe_broker(BrokerId=broker_summary['BrokerId'])
+            
+            vpc_id = 'N/A'
+            vpc_info = {'name': 'N/A', 'cidr': 'N/A'}
+            subnet_ids = broker.get('SubnetIds', [])
+            
+            if subnet_ids:
+                try:
+                    subnet_response = ec2.describe_subnets(SubnetIds=[subnet_ids[0]])
+                    vpc_id = subnet_response['Subnets'][0]['VpcId']
+                    vpc_info = get_vpc_details(ec2, vpc_id)
+                except:
+                    pass
+            
+            security_groups = broker.get('SecurityGroups', [])
+            
+            endpoints = []
+            for instance in broker.get('BrokerInstances', []):
+                if instance.get('Endpoints'):
+                    endpoints.extend(instance['Endpoints'])
+            
+            ws.append([
+                broker['BrokerName'],
+                broker['BrokerId'],
+                broker['EngineType'],
+                broker.get('EngineVersion', 'N/A'),
+                broker['DeploymentMode'],
+                broker['HostInstanceType'],
+                broker['BrokerState'],
+                vpc_id,
+                vpc_info['name'],
+                vpc_info['cidr'],
+                ', '.join(subnet_ids) if subnet_ids else 'N/A',
+                ', '.join(security_groups) if security_groups else 'N/A',
+                '\n'.join(endpoints[:3]) if endpoints else 'N/A'
+            ])
+    except Exception as e:
+        print(f"    Error: {e}")
+    
+    apply_header_style(ws, header_font, header_fill, header_alignment)
+
+def export_vpc_summary(ws, ec2, region, header_font, header_fill, header_alignment):
+    """Export VPC summary"""
+    print("  - Exporting VPC summary...")
+    
+    headers = ['VPC ID', 'VPC Name', 'CIDR Block', 'State', 'Default VPC', 'Region']
+    ws.append(headers)
+    
+    try:
+        vpcs = ec2.describe_vpcs()
+        
+        for vpc in vpcs['Vpcs']:
+            vpc_name = next((tag['Value'] for tag in vpc.get('Tags', []) if tag['Key'] == 'Name'), 'N/A')
+            
+            ws.append([
+                vpc['VpcId'],
+                vpc_name,
+                vpc['CidrBlock'],
+                vpc['State'],
+                'Yes' if vpc.get('IsDefault', False) else 'No',
+                region
+            ])
+    except Exception as e:
+        print(f"    Error: {e}")
+    
+    apply_header_style(ws, header_font, header_fill, header_alignment)
+
+def export_aws_resources_for_profile(profile_name):
+    """
+    Export AWS resources for a specific profile to Excel.
+    """
+    print(f"\n{'='*70}")
+    print(f"Processing AWS Profile: {profile_name}")
+    print(f"{'='*70}")
+    
+    try:
+        # Initialize AWS session with profile
+        session = boto3.Session(profile_name=profile_name)
+        
+        # Get account information
+        account_id, account_alias = get_account_info(session)
+        region = session.region_name or 'us-east-1'
+        
+        print(f"Account ID: {account_id}")
+        print(f"Account Alias: {account_alias}")
+        print(f"Region: {region}")
+        
+        # Generate filename with timestamp
+        timestamp = datetime.now().strftime('%y%m%d-%H%M')
+        output_file = f'aws_resources_{account_alias}-{account_id}_{timestamp}.xlsx'
+        
+        # Create a new Excel workbook
+        wb = openpyxl.Workbook()
+        wb.remove(wb.active)  # Remove default sheet
+        
+        # Header style
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+        header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        
+        # Initialize AWS clients
+        ec2 = session.client('ec2')
+        rds = session.client('rds')
+        lambda_client = session.client('lambda')
+        efs = session.client('efs')
+        ecs = session.client('ecs')
+        eks = session.client('eks')
+        elasticache = session.client('elasticache')
+        mq = session.client('mq')
+        
+        # Export all resources
+        print("\nExporting resources:")
+        
+        # EC2 Instances
+        ws_ec2 = wb.create_sheet("EC2 Instances")
+        export_ec2_instances(ws_ec2, ec2, header_font, header_fill, header_alignment)
+        
+        # RDS Instances
+        ws_rds = wb.create_sheet("RDS Instances")
+        export_rds_instances(ws_rds, rds, ec2, header_font, header_fill, header_alignment)
+        
+        # Lambda Functions
+        ws_lambda = wb.create_sheet("Lambda Functions")
+        export_lambda_functions(ws_lambda, lambda_client, ec2, header_font, header_fill, header_alignment)
+        
+        # EFS File Systems
+        ws_efs = wb.create_sheet("EFS File Systems")
+        export_efs_filesystems(ws_efs, efs, header_font, header_fill, header_alignment)
+        
+        # ECS Services
+        ws_ecs = wb.create_sheet("ECS Services")
+        export_ecs_services(ws_ecs, ecs, ec2, header_font, header_fill, header_alignment)
+        
+        # EKS Clusters
+        ws_eks = wb.create_sheet("EKS Clusters")
+        export_eks_clusters(ws_eks, eks, ec2, header_font, header_fill, header_alignment)
+        
+        # ElastiCache
+        ws_elasticache = wb.create_sheet("ElastiCache")
+        export_elasticache_clusters(ws_elasticache, elasticache, ec2, header_font, header_fill, header_alignment)
+        
+        # Amazon MQ
+        ws_mq = wb.create_sheet("Amazon MQ")
+        export_mq_brokers(ws_mq, mq, ec2, header_font, header_fill, header_alignment)
+        
+        # VPC Summary
+        ws_vpc = wb.create_sheet("VPC Summary")
+        export_vpc_summary(ws_vpc, ec2, region, header_font, header_fill, header_alignment)
+        
+        # Auto-adjust column widths for all sheets
+        print("\n  - Adjusting column widths...")
+        for sheet in wb.worksheets:
+            for column in sheet.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if cell.value and len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 60)
+                sheet.column_dimensions[column_letter].width = adjusted_width
+        
+        # Freeze top row for all sheets
+        for sheet in wb.worksheets:
+            sheet.freeze_panes = 'A2'
+        
+        # Save the workbook
+        wb.save(output_file)
+        print(f"\n✅ Export complete!")
+        print(f"📊 File: {output_file}")
+        print(f"📁 Sheets: {', '.join([ws.title for ws in wb.worksheets])}")
+        
+        return True
+        
+    except ProfileNotFound:
+        print(f"❌ Error: AWS profile '{profile_name}' not found!")
+        print(f"   Available profiles are configured in ~/.aws/credentials")
+        return False
+    except ClientError as e:
+        print(f"❌ AWS Error: {e}")
+        return False
+    except Exception as e:
+        print(f"❌ Unexpected Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+def main():
+    """Main function to process multiple AWS profiles"""
+    import sys
+    
+    # Use command line arguments if provided, otherwise use configured profiles
+    if len(sys.argv) > 1:
+        profiles_to_process = sys.argv[1:]
+        print(f"Using profiles from command line: {', '.join(profiles_to_process)}")
+    else:
+        profiles_to_process = AWS_PROFILES
+        print(f"Using profiles from configuration: {', '.join(profiles_to_process)}")
+    
+    print(f"\n{'='*70}")
+    print(f"AWS Multi-Profile Resource Exporter")
+    print(f"{'='*70}")
+    print(f"Total profiles to process: {len(profiles_to_process)}")
+    
+    # Track results
+    successful = []
+    failed = []
+    
+    # Process each profile
+    for profile in profiles_to_process:
+        if export_aws_resources_for_profile(profile):
+            successful.append(profile)
+        else:
+            failed.append(profile)
+    
+    # Summary
+    print(f"\n{'='*70}")
+    print(f"SUMMARY")
+    print(f"{'='*70}")
+    print(f"✅ Successfully processed: {len(successful)} profile(s)")
+    if successful:
+        for profile in successful:
+            print(f"   - {profile}")
+    
+    if failed:
+        print(f"\n❌ Failed to process: {len(failed)} profile(s)")
+        for profile in failed:
+            print(f"   - {profile}")
+    
+    print(f"\n{'='*70}")
+    print(f"All exports completed!")
+    print(f"{'='*70}\n")
+
+if __name__ == "__main__":
+    # Make sure AWS credentials are configured for each profile
+    # Configure profiles in ~/.aws/credentials or ~/.aws/config
+    # 
+    # Example ~/.aws/credentials:
+    # [default]
+    # aws_access_key_id = YOUR_KEY
+    # aws_secret_access_key = YOUR_SECRET
+    # 
+    # [production]
+    # aws_access_key_id = YOUR_KEY
+    # aws_secret_access_key = YOUR_SECRET
+    # region = us-west-2
+    # 
+    # [staging]
+    # aws_access_key_id = YOUR_KEY
+    # aws_secret_access_key = YOUR_SECRET
+    # region = us-east-1
+    
+    main()
