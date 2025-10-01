@@ -6,7 +6,7 @@
 # Organization: Gosoft (Thailand) Co., Ltd.
 # Position: Expert DevOps Engineer, Data Science and Data Engineering Team
 # Contact: GitHub Issues Only - https://github.com/zendz/aws-export-resources/issues
-# Version: 1.5.2
+# Version: 1.5.3
 # Created: September 20, 2025
 # Last Updated: October 01, 2025
 # License: MIT License
@@ -123,6 +123,9 @@ def extract_tags(aws_tags):
     for tag in aws_tags:
         key = tag.get('Key', '')
         value = tag.get('Value', '')
+        # Skip malformed tags (empty key or both key and value are empty)
+        if not key or (not key and not value):
+            continue
         if key.lower() not in common_keys_lower:
             additional_tags.append(f"{key}={value}")
     
@@ -469,7 +472,6 @@ def export_lambda_functions(ws, lambda_client, ec2, header_font, header_fill, he
                 subnet_names = []
             
             # Get tags for Lambda function
-            tag_values = get_tag_values(func.get('Tags', {}))
             # Note: Lambda tags come as dict {'Key': 'Value'}, need to convert
             lambda_tags = [{'Key': k, 'Value': v} for k, v in func.get('Tags', {}).items()]
             tag_values = get_tag_values(lambda_tags)
@@ -724,8 +726,9 @@ def export_ecs_clusters(ws, ecs, ec2, header_font, header_fill, header_alignment
             service_connect = cluster.get('serviceConnectDefaults', {})
             service_connect_ns = service_connect.get('namespace', 'N/A')
             
-            # Get cluster tags
-            cluster_tags = cluster.get('tags', [])
+            # Get cluster tags (convert ECS lowercase format to standard format)
+            cluster_tags_raw = cluster.get('tags', [])
+            cluster_tags = [{'Key': tag.get('key', ''), 'Value': tag.get('value', '')} for tag in cluster_tags_raw]
             
             # Format create date
             create_date = 'N/A'  # ECS clusters don't have explicit create date in API
@@ -740,7 +743,7 @@ def export_ecs_clusters(ws, ecs, ec2, header_font, header_fill, header_alignment
                 sanitize_excel_data(stats_str),
                 sanitize_excel_data(capacity_providers_str),
                 sanitize_excel_data(strategy_str),
-                sanitize_excel_data(', '.join([tag.get('key', '') + ':' + tag.get('value', '') for tag in cluster_tags[:3]])),  # Show first 3 tags
+                sanitize_excel_data(', '.join([tag.get('Key', '') + ':' + tag.get('Value', '') for tag in cluster_tags[:3]])),  # Show first 3 tags
                 sanitize_excel_data(config_str),
                 sanitize_excel_data(service_connect_ns),
                 sanitize_excel_data(cluster['clusterArn']),

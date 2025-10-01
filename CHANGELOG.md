@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.3] - 2025-10-01
+
+### Fixed
+- **Tag Data Verification**: Comprehensive tag handling improvements
+  - Fixed Lambda functions duplicate tag processing issue
+  - Fixed ECS Clusters lowercase tag format conversion (key/value → Key/Value)
+  - Improved malformed tag filtering to prevent invalid additional tag entries
+  - Enhanced error handling for missing tag keys or values
+  - Standardized tag processing across all AWS services
+- **Data Quality**: Eliminated tag-related Excel export inconsistencies
+- **Export Reliability**: Reduced failures from tag processing errors
+
+### Enhanced
+- **Tag Validation**: Added comprehensive tag format validation
+- **Service Compatibility**: Ensured consistent tag extraction across 22 AWS services
+- **Case Sensitivity**: Improved case-insensitive tag matching for common tags
+
 ## [1.5.2] - 2025-10-01
 
 ### Added
