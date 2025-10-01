@@ -45,6 +45,8 @@ This tool exports the following AWS resources across multiple profiles:
 - **Cognito Identity Pools** - Identity federation pool settings
 - **VPC Endpoints** - Service endpoints, DNS settings, and security configurations
 - **KMS Keys** - Encryption key details, rotation status, and aliases
+- **ECR Repositories** - Container registry details, policies, image statistics, and security scanning
+- **API Gateway** - REST APIs with stages, endpoints, configuration, and comprehensive tag support
 - **VPC Summary** - Complete VPC topology with subnets, route tables, and gateways
 
 ## Installation

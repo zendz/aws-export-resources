@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.5] - 2025-10-01
+
+### Added
+- **ECR (Elastic Container Registry)**: Complete container repository export
+  - Repository details: name, ARN, URI, registry ID, creation date
+  - Configuration: image tag mutability, scan on push, encryption settings
+  - Policies: lifecycle policy and repository policy detection
+  - Statistics: image count, repository size in MB, last push date
+  - Security: KMS encryption key information and vulnerability scanning
+  - Full tag extraction support for resource organization
+- **API Gateway**: Comprehensive REST API export functionality
+  - API information: name, ID, type, protocol, endpoints
+  - Stage details: stage names and endpoints for each API
+  - Configuration: API key source, CORS settings, binary media types
+  - Settings: compression settings, execute API endpoint status
+  - ARN generation for proper resource identification
+  - Complete tag support with both API-level and stage-level tags
+  - Creation dates with proper timestamp formatting
+
+### Enhanced
+- **Tag Processing**: Improved tag format compatibility
+  - Fixed API Gateway tag format conversion (dictionary → AWS standard format)
+  - Enhanced tag extraction to handle service-specific tag structures
+  - Standardized tag processing across all 25+ AWS services
+- **Parallel Processing**: Both services integrated into concurrent export workflow
+- **Error Handling**: Robust error handling for API failures and missing permissions
+- **Excel Export**: Added dedicated worksheets for ECR and API Gateway services
+
+### Fixed
+- **API Gateway Tags**: Resolved 'str' object has no attribute 'get' error
+  - Root cause: Tag format mismatch between API Gateway and standard AWS format
+  - Solution: Convert API Gateway dictionary format to standard AWS list format
+  - Impact: Eliminates all API Gateway export errors and enables proper tag extraction
+
 ## [1.5.4] - 2025-10-01
 
 ### Enhanced

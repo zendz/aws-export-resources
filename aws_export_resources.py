@@ -6,7 +6,7 @@
 # Organization: Gosoft (Thailand) Co., Ltd.
 # Position: Expert DevOps Engineer, Data Science and Data Engineering Team
 # Contact: GitHub Issues Only - https://github.com/zendz/aws-export-resources/issues
-# Version: 1.5.4
+# Version: 1.5.5
 # Created: September 20, 2025
 # Last Updated: October 01, 2025
 # License: MIT License
@@ -14,7 +14,8 @@
 # Description:
 #   A comprehensive AWS resource inventory tool that exports detailed information
 #   about AWS resources across multiple profiles to Excel format with parallel
-#   processing capabilities and advanced tag management.
+#   processing capabilities and advanced tag management. Supports 25+ AWS services
+#   including EC2, RDS, Lambda, ECS, EKS, S3, API Gateway, ECR, and more.
 #
 # Requirements:
 #   - Python 3.7+
