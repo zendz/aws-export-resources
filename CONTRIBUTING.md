@@ -54,6 +54,7 @@ Thank you for your interest in contributing to this project! We welcome contribu
 ## Reporting Issues
 
 If you encounter any issues or have feature requests:
+
 - Create an issue on GitHub: https://github.com/zendz/aws-export-resources/issues
 - Provide detailed information about the problem
 - Include steps to reproduce the issue
@@ -62,7 +63,7 @@ If you encounter any issues or have feature requests:
 ## Support & Contact
 
 For questions or additional support:
-- Email: aws-tools-support@company.com
-- Slack: #aws-infrastructure-tools
+
+- Email: zendz@dopost.it
 
 We appreciate your contributions to making this tool better!
