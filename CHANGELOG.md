@@ -5,6 +5,75 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.2] - 2025-10-01
+
+### Added
+- **ECS Clusters Export**: New comprehensive ECS cluster monitoring functionality
+  - Cluster status and resource metrics (active services, running/pending tasks)
+  - Container instance counts and cluster statistics
+  - Capacity provider configuration and strategies
+  - Service Connect defaults and cluster configurations
+  - Complete tag support with ARN identification
+  - Integration with parallel processing workflow
+
+### Enhanced
+- **Service Coverage**: Now supports 22 AWS services with ECS Clusters addition
+- **Container Orchestration**: Complete ECS coverage with both Services and Clusters
+
+## [1.5.1] - 2025-10-01
+
+### Added
+- **ARN Fields**: Enhanced resource identification with ARN columns
+  - EC2 instances: Added ARN column for complete resource identification
+  - Lambda functions: Added ARN and Create Date columns
+  - DynamoDB tables: Added ARN column
+  - S3 buckets: Added ARN column
+  - ECS Services: Added ARN and Create Date columns
+  - RDS Instances: Added ARN and Create Date columns
+
+### Enhanced
+- **KMS Keys Export**: Now exports only customer-managed keys (excludes AWS-managed keys)
+- **Resource Tracking**: Improved resource identification and compliance reporting
+
+### Fixed
+- KMS export performance improved by filtering out numerous AWS-managed keys
+- Resource ARNs provide consistent identification across AWS services
+
+## [1.5.0] - 2025-10-01
+
+### Added
+- **VPC Endpoints Export**: Added comprehensive VPC endpoints export functionality
+  - VPC endpoint details including type, service name, and state
+  - Associated VPC information (ID, name, CIDR)
+  - Network configuration (route tables, subnets, security groups)
+  - DNS settings and policy documents
+  - Creation timestamps and DNS entries
+- **KMS Keys Export**: Added detailed KMS keys export functionality
+  - Key metadata including ARN, description, and usage
+  - Key state and management information (AWS vs Customer managed)
+  - Security features (rotation status, multi-region configuration)
+  - Key aliases and associated tags
+  - Creation and deletion dates
+
+### Enhanced
+- Load balancer export with additional security details:
+  - TLS certificate information from listeners
+  - Security policy details for SSL/TLS connections
+  - ARN and creation date information
+
+### Fixed
+- **Excel Corruption Prevention**: Added comprehensive data sanitization
+  - Prevents Excel formula injection (escapes =, +, -, @ characters)
+  - Removes control characters that cause XML corruption
+  - Limits cell content length to prevent Excel limits exceeded
+  - Sanitizes all exported data to ensure valid Excel files
+- Fixed VPC Summary worksheet missing tag columns causing sheet corruption
+
+### Changed
+- Updated configuration to include 'vpc-endpoints' and 'kms' services
+- Improved parallel processing to handle new resource types
+- Enhanced data validation and sanitization across all export functions
+
 ## [1.4.1] - 2025-10-01
 
 ### Added
@@ -31,9 +100,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added professional author attribution with organization details
 - Improved project setup and usage instructions
 
-### Authors
-- Nattait Nandawarang - Gosoft (Thailand) Co., Ltd.
-
 ## [1.4.0] - 2025-10-01
 
 ### Added
@@ -47,10 +113,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Improved
 - Excel formatting with auto-column width adjustment
+- Header styling with consistent formatting across all sheets
+- Thread-safe parallel processing for faster exports
+- Configurable tag extraction with common tag filtering
 - Code documentation and maintainability
-
-### Authors
-- Nattait Nandawarang - Gosoft (Thailand) Co., Ltd.
 
 ## [1.3.0] - 2025-09-30
 
@@ -63,9 +129,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Error handling with thread-safe operations
 - Performance improvements: 70% faster execution time
 
-### Authors
-- Nattait Nandawarang - Gosoft (Thailand) Co., Ltd.
-
 ## [1.2.0] - 2025-09-28
 
 ### Added
@@ -76,9 +139,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Improved
 - Error handling and resource details
 - Security information extraction
-
-### Authors
-- Nattait Nandawarang - Gosoft (Thailand) Co., Ltd.
 
 ## [1.1.0] - 2025-09-25
 
@@ -93,9 +153,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Bug fixes for VPC detection
 
-### Authors
-- Nattait Nandawarang - Gosoft (Thailand) Co., Ltd.
-
 ## [1.0.0] - 2025-09-20
 
 ### Added
@@ -105,12 +162,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Multi-profile support
 - Excel export with formatting
 
-### Authors
-- Nattait Nandawarang - Gosoft (Thailand) Co., Ltd.
-
 ## Known Issues & Limitations
 
 - AWS API rate limiting may occur with too many concurrent requests
 - Some services may not be available in all AWS regions
 - Large accounts may experience timeout issues with certain services
 - S3 bucket operations may be slow for accounts with many buckets
+
+## Authors
+
+- **Nattait Nandawarang** - *Gosoft (Thailand) Co., Ltd.*
+- Position: Expert DevOps Engineer, Data Science and Data Engineering Team

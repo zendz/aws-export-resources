@@ -22,20 +22,30 @@ A Python tool to ex3. Configure your AWS credentials:
 
 ## Supported AWS Services
 
-- EC2 Instances
-- S3 Buckets
-- RDS Instances
-- Lambda Functions
-- VPC Resources
-- Load Balancers (ALB/NLB/CLB)
-- Auto Scaling Groups
-- CloudFormation Stacks
-- IAM Roles and Users
-- Route53 Hosted Zones
-- CloudWatch Alarms
-- SNS Topics
-- SQS Queues
-- And many more...
+This tool exports the following AWS resources across multiple profiles:
+
+- **EC2 Instances** - Including security groups, VPC details, and instance metadata
+- **RDS Instances & Clusters** - Database instances, Aurora clusters, and configuration
+- **Lambda Functions** - Function details, runtime, memory, and VPC configuration
+- **EFS File Systems** - File system details, performance mode, and access points
+- **ECS Services** - Service definitions, task definitions, and cluster information
+- **ECS Clusters** - Cluster status, capacity providers, and resource metrics
+- **EKS Clusters** - Kubernetes cluster details, node groups, and networking
+- **ElastiCache** - Redis and Memcached clusters with configuration details
+- **Amazon MQ** - Message broker instances and configuration
+- **Load Balancers** - ALB/NLB with listeners, target groups, and TLS certificates
+- **DynamoDB Tables** - Table schemas, capacity settings, and global tables
+- **CloudWatch Alarms** - Monitoring alarms and their configurations
+- **CloudWatch Log Groups** - Log group details and retention settings
+- **AWS Transfer Family** - SFTP/FTPS server details and user configurations
+- **AWS Personalize** - Machine learning solution schemas and campaigns
+- **S3 Buckets** - Bucket properties, encryption, versioning, and lifecycle policies
+- **S3 Glacier Vaults** - Archive vault details and access policies
+- **Cognito User Pools** - User authentication pool configurations
+- **Cognito Identity Pools** - Identity federation pool settings
+- **VPC Endpoints** - Service endpoints, DNS settings, and security configurations
+- **KMS Keys** - Encryption key details, rotation status, and aliases
+- **VPC Summary** - Complete VPC topology with subnets, route tables, and gateways
 
 ## Installation
 
@@ -216,6 +226,12 @@ For issues, questions, or feature requests:
 **Note:** Email contact has been removed for security and efficiency. All communication goes through GitHub Issues.
 
 ## Changelog
+
+### Version 1.5.0
+- **New Resource Types**: Added VPC Endpoints and KMS Keys export functionality
+- **Enhanced Security**: Load balancer export now includes TLS certificate and security policy details
+- **Excel Corruption Fix**: Comprehensive data sanitization prevents Excel file corruption
+- **Improved Coverage**: Support for 21 AWS services with comprehensive field mapping
 
 ### Version 1.4.1
 - Configuration separation into dedicated config.py file

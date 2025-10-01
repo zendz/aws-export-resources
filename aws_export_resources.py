@@ -6,7 +6,7 @@
 # Organization: Gosoft (Thailand) Co., Ltd.
 # Position: Expert DevOps Engineer, Data Science and Data Engineering Team
 # Contact: GitHub Issues Only - https://github.com/zendz/aws-export-resources/issues
-# Version: 1.4.1
+# Version: 1.5.2
 # Created: September 20, 2025
 # Last Updated: October 01, 2025
 # License: MIT License
@@ -42,6 +42,7 @@ from botocore.exceptions import ClientError, ProfileNotFound
 import concurrent.futures
 from threading import Lock
 import time
+import re
 
 # Import configuration
 from config import (
@@ -56,6 +57,30 @@ from config import (
     LOGGING_CONFIG,
     ADVANCED_OPTIONS
 )
+
+def sanitize_excel_data(value):
+    """Sanitize data to prevent Excel corruption and formula injection"""
+    if value is None:
+        return 'N/A'
+    
+    # Convert to string
+    str_value = str(value)
+    
+    # Prevent formula injection by escaping leading formula characters
+    if str_value.startswith(('=', '+', '-', '@')):
+        str_value = "'" + str_value
+    
+    # Replace problematic characters that can cause Excel issues
+    str_value = str_value.replace('\x00', '').replace('\r', ' ').replace('\n', ' ')
+    
+    # Limit length to prevent Excel cell limit issues (32,767 characters)
+    if len(str_value) > 32000:
+        str_value = str_value[:32000] + '...'
+    
+    # Remove or replace other control characters
+    str_value = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', str_value)
+    
+    return str_value
 
 # Add this near the top of your script, after imports
 write_lock = Lock()
@@ -116,7 +141,7 @@ def get_tag_values(aws_tags):
     Returns tag values as a list ready to append to row data.
     """
     common_tags, additional_tags = extract_tags(aws_tags)
-    return [common_tags[key] for key in COMMON_TAG_KEYS] + [additional_tags]
+    return [sanitize_excel_data(common_tags[key]) for key in COMMON_TAG_KEYS] + [sanitize_excel_data(additional_tags)]
 
 # ======================================================================
 # You can also pass profiles as command line arguments
@@ -187,7 +212,8 @@ def export_ec2_instances(ws, ec2, header_font, header_fill, header_alignment):
         'Total EBS Volumes', 'Total EBS Size (GB)', 'EBS Volume IDs',
         'EBS Volume Types', 'EBS IOPS', 'EBS Encrypted',
         'VPC ID', 'VPC Name', 'VPC CIDR',
-        'Subnet ID', 'Subnet Name', 'Subnet CIDR', 'Availability Zone'
+        'Subnet ID', 'Subnet Name', 'Subnet CIDR', 'Availability Zone',
+        'ARN'
     ] + get_tag_columns()
     ws.append(headers)
     
@@ -238,6 +264,13 @@ def export_ec2_instances(ws, ec2, header_font, header_fill, header_alignment):
                 # Extract tags
                 tag_values = get_tag_values(instance.get('Tags', []))
                 
+                # Generate ARN for EC2 instance
+                # Format: arn:aws:ec2:region:account-id:instance/instance-id
+                region = ec2.meta.region_name
+                # Get account ID from instance owner ID
+                owner_id = instance.get('OwnerId', 'unknown')
+                instance_arn = f"arn:aws:ec2:{region}:{owner_id}:instance/{instance['InstanceId']}"
+                
                 ws.append([
                     instance['InstanceId'],
                     name,
@@ -261,7 +294,8 @@ def export_ec2_instances(ws, ec2, header_font, header_fill, header_alignment):
                     subnet_id,
                     subnet_info['name'],
                     subnet_info['cidr'],
-                    subnet_info['az']
+                    subnet_info['az'],
+                    instance_arn
                 ] + tag_values)
     except Exception as e:
         print(f"    Error: {e}")
@@ -276,7 +310,7 @@ def export_rds_instances(ws, rds, ec2, header_font, header_fill, header_alignmen
         'DB Identifier', 'Engine', 'Engine Version', 
         'Instance Class', 'Status', 'Endpoint', 'Port', 'Storage (GB)',
         'Multi-AZ', 'VPC ID', 'VPC Name', 'VPC CIDR',
-        'Subnet Group', 'Subnets', 'Availability Zone'
+        'Subnet Group', 'Subnets', 'Availability Zone', 'ARN', 'Create Date'
     ] + get_tag_columns()
     ws.append(headers)
     
@@ -300,6 +334,11 @@ def export_rds_instances(ws, rds, ec2, header_font, header_fill, header_alignmen
             except:
                 tag_values = get_tag_values([])
             
+            # Format create date
+            create_date = db.get('InstanceCreateTime', 'N/A')
+            if hasattr(create_date, 'strftime'):
+                create_date = create_date.strftime('%Y-%m-%d %H:%M:%S')
+            
             ws.append([
                 db['DBInstanceIdentifier'],
                 db['Engine'],
@@ -315,7 +354,9 @@ def export_rds_instances(ws, rds, ec2, header_font, header_fill, header_alignmen
                 vpc_info['cidr'],
                 subnet_group_name,
                 subnet_list,
-                db['AvailabilityZone']
+                db['AvailabilityZone'],
+                db['DBInstanceArn'],
+                create_date
             ] + tag_values)
     except Exception as e:
         print(f"    Error: {e}")
@@ -332,7 +373,7 @@ def export_rds_clusters(ws, rds, ec2, header_font, header_fill, header_alignment
         'Database Name', 'Master Username', 'Multi-AZ',
         'Cluster Members', 'Storage Encrypted', 'Backup Retention (Days)',
         'VPC ID', 'VPC Name', 'VPC CIDR',
-        'Subnet Group', 'Availability Zones', 'Storage Type'
+        'Subnet Group', 'Availability Zones', 'Storage Type', 'ARN', 'Create Date'
     ] + get_tag_columns()
     ws.append(headers)
     
@@ -404,7 +445,8 @@ def export_lambda_functions(ws, lambda_client, ec2, header_font, header_fill, he
         'Function Name', 'Runtime', 'Memory (MB)', 
         'Timeout (sec)', 'Last Modified', 'Handler',
         'VPC ID', 'VPC Name', 'VPC CIDR',
-        'Subnet IDs', 'Subnet Names', 'Security Groups'
+        'Subnet IDs', 'Subnet Names', 'Security Groups',
+        'ARN', 'Create Date'
     ] + get_tag_columns()
     ws.append(headers)
     
@@ -432,6 +474,11 @@ def export_lambda_functions(ws, lambda_client, ec2, header_font, header_fill, he
             lambda_tags = [{'Key': k, 'Value': v} for k, v in func.get('Tags', {}).items()]
             tag_values = get_tag_values(lambda_tags)
             
+            # Parse create date from LastModified (creation time for Lambda)
+            create_date = func.get('LastModified', 'N/A')
+            if 'T' in str(create_date):
+                create_date = str(create_date).replace('T', ' ').split('+')[0]
+            
             ws.append([
                 func['FunctionName'],
                 func.get('Runtime', 'N/A'),
@@ -444,7 +491,9 @@ def export_lambda_functions(ws, lambda_client, ec2, header_font, header_fill, he
                 vpc_info['cidr'],
                 ', '.join(subnet_ids) if subnet_ids else 'N/A',
                 ', '.join(subnet_names) if subnet_names else 'N/A',
-                ', '.join(security_groups) if security_groups else 'N/A'
+                ', '.join(security_groups) if security_groups else 'N/A',
+                func['FunctionArn'],
+                create_date
             ] + tag_values)
     except Exception as e:
         print(f"    Error: {e}")
@@ -508,7 +557,8 @@ def export_ecs_services(ws, ecs, ec2, header_font, header_fill, header_alignment
         'Cluster Name', 'Service Name', 'Status', 'Desired Count',
         'Running Count', 'Launch Type', 'Task Definition',
         'Storage Type', 'Volume Size (GB)', 'Volume Type', 'Volume IOPS',
-        'VPC ID', 'Subnet IDs', 'Security Groups', 'Load Balancers'
+        'VPC ID', 'Subnet IDs', 'Security Groups', 'Load Balancers',
+        'ARN', 'Create Date'
     ] + get_tag_columns()
     ws.append(headers)
     
@@ -583,6 +633,11 @@ def export_ecs_services(ws, ecs, ec2, header_font, header_fill, header_alignment
                     except Exception as e:
                         pass
                     
+                    # Format create date
+                    create_date = service.get('createdAt', 'N/A')
+                    if hasattr(create_date, 'strftime'):
+                        create_date = create_date.strftime('%Y-%m-%d %H:%M:%S')
+                    
                     ws.append([
                         cluster_name,
                         service['serviceName'],
@@ -598,8 +653,102 @@ def export_ecs_services(ws, ecs, ec2, header_font, header_fill, header_alignment
                         vpc_id,
                         ', '.join(subnets) if subnets else 'N/A',
                         ', '.join(security_groups) if security_groups else 'N/A',
-                        load_balancers if load_balancers else 'N/A'
+                        load_balancers if load_balancers else 'N/A',
+                        service['serviceArn'],
+                        create_date
                     ])
+    except Exception as e:
+        print(f"    Error: {e}")
+    
+    apply_header_style(ws, header_font, header_fill, header_alignment)
+
+def export_ecs_clusters(ws, ecs, ec2, header_font, header_fill, header_alignment):
+    """Export ECS Clusters"""
+    print("  - Exporting ECS Clusters...")
+    
+    headers = [
+        'Cluster Name', 'Status', 'Active Services Count', 'Running Tasks Count',
+        'Pending Tasks Count', 'Active Container Instances', 'Statistics',
+        'Capacity Providers', 'Default Capacity Provider Strategy', 'Tags',
+        'Configuration', 'Service Connect Defaults', 'ARN', 'Create Date'
+    ] + get_tag_columns()
+    ws.append(headers)
+    
+    try:
+        # Get all clusters
+        cluster_arns = ecs.list_clusters().get('clusterArns', [])
+        
+        if not cluster_arns:
+            print("    No ECS clusters found")
+            apply_header_style(ws, header_font, header_fill, header_alignment)
+            return
+        
+        # Get detailed information for all clusters
+        clusters_details = ecs.describe_clusters(
+            clusters=cluster_arns,
+            include=['CONFIGURATIONS', 'STATISTICS', 'TAGS', 'ATTACHMENTS']
+        )
+        
+        for cluster in clusters_details.get('clusters', []):
+            cluster_name = cluster['clusterName']
+            
+            # Get statistics
+            statistics = cluster.get('statistics', [])
+            stats_summary = []
+            for stat in statistics:
+                stats_summary.append(f"{stat['name']}: {stat['value']}")
+            stats_str = ', '.join(stats_summary) if stats_summary else 'N/A'
+            
+            # Get capacity providers
+            capacity_providers = cluster.get('capacityProviders', [])
+            capacity_providers_str = ', '.join(capacity_providers) if capacity_providers else 'N/A'
+            
+            # Get default capacity provider strategy
+            default_strategy = cluster.get('defaultCapacityProviderStrategy', [])
+            strategy_summary = []
+            for strategy in default_strategy:
+                strategy_summary.append(
+                    f"{strategy.get('capacityProvider', '')}: {strategy.get('weight', 0)}"
+                )
+            strategy_str = ', '.join(strategy_summary) if strategy_summary else 'N/A'
+            
+            # Get configuration
+            configuration = cluster.get('configuration', {})
+            config_summary = []
+            if 'executeCommandConfiguration' in configuration:
+                exec_config = configuration['executeCommandConfiguration']
+                config_summary.append(f"ExecuteCommand: {exec_config.get('logging', 'N/A')}")
+            config_str = ', '.join(config_summary) if config_summary else 'N/A'
+            
+            # Get Service Connect defaults
+            service_connect = cluster.get('serviceConnectDefaults', {})
+            service_connect_ns = service_connect.get('namespace', 'N/A')
+            
+            # Get cluster tags
+            cluster_tags = cluster.get('tags', [])
+            
+            # Format create date
+            create_date = 'N/A'  # ECS clusters don't have explicit create date in API
+            
+            row_data = [
+                sanitize_excel_data(cluster_name),
+                sanitize_excel_data(cluster['status']),
+                sanitize_excel_data(cluster.get('activeServicesCount', 0)),
+                sanitize_excel_data(cluster.get('runningTasksCount', 0)),
+                sanitize_excel_data(cluster.get('pendingTasksCount', 0)),
+                sanitize_excel_data(cluster.get('registeredContainerInstancesCount', 0)),
+                sanitize_excel_data(stats_str),
+                sanitize_excel_data(capacity_providers_str),
+                sanitize_excel_data(strategy_str),
+                sanitize_excel_data(', '.join([tag.get('key', '') + ':' + tag.get('value', '') for tag in cluster_tags[:3]])),  # Show first 3 tags
+                sanitize_excel_data(config_str),
+                sanitize_excel_data(service_connect_ns),
+                sanitize_excel_data(cluster['clusterArn']),
+                sanitize_excel_data(create_date)
+            ] + get_tag_values(cluster_tags)
+            
+            ws.append(row_data)
+            
     except Exception as e:
         print(f"    Error: {e}")
     
@@ -653,7 +802,7 @@ def export_elasticache_clusters(ws, elasticache, ec2, header_font, header_fill, 
         'Cluster ID', 'Engine', 'Engine Version', 'Node Type',
         'Status', 'Num Cache Nodes', 'Preferred AZ',
         'VPC ID', 'VPC Name', 'VPC CIDR', 'Subnet Group',
-        'Security Groups', 'Endpoint'
+        'Security Groups', 'Endpoint', 'ARN', 'Create Date'
     ] + get_tag_columns()
     ws.append(headers)
     
@@ -803,11 +952,11 @@ def export_load_balancers(ws, elbv2, ec2, header_font, header_fill, header_align
     print("  - Exporting Load Balancers...")
     
     headers = [
-        'Load Balancer Name', 'Type', 'Scheme', 'State',
+        'Load Balancer Name', 'Load Balancer ARN', 'Type', 'Scheme', 'State',
         'DNS Name', 'Created Time',
         'VPC ID', 'VPC Name', 'VPC CIDR',
         'Availability Zones', 'Subnet IDs', 'Security Groups',
-        'IP Address Type'
+        'IP Address Type', 'TLS Certificate ARNs', 'Security Policy'
     ] + get_tag_columns()
     ws.append(headers)
     
@@ -824,8 +973,38 @@ def export_load_balancers(ws, elbv2, ec2, header_font, header_fill, header_align
             
             security_groups = lb.get('SecurityGroups', [])
             
-            ws.append([
+            # Get TLS certificates and security policies from listeners
+            tls_certificates = []
+            security_policies = []
+            
+            try:
+                listeners_response = elbv2.describe_listeners(LoadBalancerArn=lb['LoadBalancerArn'])
+                for listener in listeners_response['Listeners']:
+                    # Get TLS certificates
+                    if 'Certificates' in listener:
+                        for cert in listener['Certificates']:
+                            if cert.get('CertificateArn'):
+                                tls_certificates.append(cert['CertificateArn'])
+                    
+                    # Get security policies (for HTTPS/TLS listeners)
+                    if listener.get('SslPolicy'):
+                        security_policies.append(listener['SslPolicy'])
+            except Exception as listener_error:
+                print(f"    Warning: Could not get listener details for {lb['LoadBalancerName']}: {listener_error}")
+            
+            # Get tags for this load balancer
+            lb_tags = []
+            try:
+                tags_response = elbv2.describe_tags(ResourceArns=[lb['LoadBalancerArn']])
+                for tag_desc in tags_response['TagDescriptions']:
+                    lb_tags = tag_desc.get('Tags', [])
+                    break
+            except Exception as tag_error:
+                print(f"    Warning: Could not get tags for {lb['LoadBalancerName']}: {tag_error}")
+            
+            row_data = [
                 lb['LoadBalancerName'],
+                lb['LoadBalancerArn'],
                 lb['Type'],
                 lb['Scheme'],
                 lb['State']['Code'],
@@ -837,8 +1016,12 @@ def export_load_balancers(ws, elbv2, ec2, header_font, header_fill, header_align
                 ', '.join(azs) if azs else 'N/A',
                 ', '.join(subnet_ids) if subnet_ids else 'N/A',
                 ', '.join(security_groups) if security_groups else 'N/A',
-                lb.get('IpAddressType', 'N/A')
-            ])
+                lb.get('IpAddressType', 'N/A'),
+                ', '.join(list(set(tls_certificates))) if tls_certificates else 'N/A',
+                ', '.join(list(set(security_policies))) if security_policies else 'N/A'
+            ] + get_tag_values(lb_tags)
+            
+            ws.append(row_data)
     except Exception as e:
         print(f"    Error: {e}")
     
@@ -888,7 +1071,7 @@ def export_cloudwatch_alarms(ws, cloudwatch, header_font, header_fill, header_al
         'Alarm Name', 'State', 'Metric Name', 'Namespace',
         'Statistic', 'Period (sec)', 'Threshold', 'Comparison Operator',
         'Evaluation Periods', 'Actions Enabled', 'Alarm Actions',
-        'Dimensions'
+        'Dimensions', 'ARN', 'Create Date'
     ] + get_tag_columns()
     ws.append(headers)
     
@@ -961,7 +1144,7 @@ def export_dynamodb_tables(ws, dynamodb, header_font, header_fill, header_alignm
         'Write Capacity Units', 'Billing Mode', 'Table Class',
         'Partition Key', 'Sort Key', 'Global Secondary Indexes',
         'Local Secondary Indexes', 'Stream Enabled', 'Point-in-time Recovery',
-        'Encryption Type'
+        'Encryption Type', 'ARN'
     ] + get_tag_columns()
     ws.append(headers)
     
@@ -1028,7 +1211,8 @@ def export_dynamodb_tables(ws, dynamodb, header_font, header_fill, header_alignm
                     lsi_count,
                     stream_enabled,
                     pitr_enabled,
-                    encryption_type
+                    encryption_type,
+                    table['TableArn']
                 ] + tag_values)
             except Exception as e:
                 print(f"    Error processing table {table_name}: {e}")
@@ -1117,14 +1301,16 @@ def export_vpc_summary(ws, ec2, region, header_font, header_fill, header_alignme
         for vpc in vpcs['Vpcs']:
             vpc_name = next((tag['Value'] for tag in vpc.get('Tags', []) if tag['Key'] == 'Name'), 'N/A')
             
+            vpc_tags = vpc.get('Tags', [])
+            
             ws.append([
-                vpc['VpcId'],
-                vpc_name,
-                vpc['CidrBlock'],
-                vpc['State'],
-                'Yes' if vpc.get('IsDefault', False) else 'No',
-                region
-            ])
+                sanitize_excel_data(vpc['VpcId']),
+                sanitize_excel_data(vpc_name),
+                sanitize_excel_data(vpc['CidrBlock']),
+                sanitize_excel_data(vpc['State']),
+                sanitize_excel_data('Yes' if vpc.get('IsDefault', False) else 'No'),
+                sanitize_excel_data(region)
+            ] + get_tag_values(vpc_tags))
     except Exception as e:
         print(f"    Error: {e}")
     
@@ -1138,7 +1324,7 @@ def export_s3_buckets(ws, s3, header_font, header_fill, header_alignment):
         'Bucket Name', 'Creation Date', 'Region',
         'Versioning Status', 'Encryption Type', 'Public Access Block',
         'Lifecycle Rules', 'Replication Status', 'Logging Enabled',
-        'Website Hosting'
+        'Website Hosting', 'ARN'
     ] + get_tag_columns()
     ws.append(headers)
     
@@ -1217,6 +1403,9 @@ def export_s3_buckets(ws, s3, header_font, header_fill, header_alignment):
                 except:
                     tag_values = get_tag_values([])
                 
+                # Generate S3 bucket ARN
+                bucket_arn = f"arn:aws:s3:::{bucket_name}"
+                
                 ws.append([
                     bucket_name,
                     bucket['CreationDate'].strftime('%Y-%m-%d %H:%M:%S'),
@@ -1227,7 +1416,8 @@ def export_s3_buckets(ws, s3, header_font, header_fill, header_alignment):
                     lifecycle_count,
                     replication_status,
                     logging_enabled,
-                    website_hosting
+                    website_hosting,
+                    bucket_arn
                 ] + tag_values)
             except Exception as e:
                 print(f"    Error processing bucket {bucket_name}: {e}")
@@ -1414,6 +1604,153 @@ def export_cognito_identity_pools(ws, cognito_identity, header_font, header_fill
     
     apply_header_style(ws, header_font, header_fill, header_alignment)
 
+def export_vpc_endpoints(ws, ec2, header_font, header_fill, header_alignment):
+    """Export VPC Endpoints"""
+    print("  - Exporting VPC Endpoints...")
+    
+    headers = [
+        'VPC Endpoint ID', 'VPC Endpoint Type', 'Service Name', 'State',
+        'VPC ID', 'VPC Name', 'VPC CIDR', 'Route Table IDs', 'Subnet IDs',
+        'Security Group IDs', 'Private DNS Enabled', 'Policy Document',
+        'Creation Timestamp', 'DNS Entries'
+    ] + get_tag_columns()
+    ws.append(headers)
+    
+    try:
+        vpc_endpoints = ec2.describe_vpc_endpoints()
+        
+        for endpoint in vpc_endpoints['VpcEndpoints']:
+            vpc_id = endpoint.get('VpcId', 'N/A')
+            vpc_info = get_vpc_details(ec2, vpc_id) if vpc_id != 'N/A' else {'name': 'N/A', 'cidr': 'N/A'}
+            
+            # Get route table IDs
+            route_table_ids = [rt for rt in endpoint.get('RouteTableIds', [])]
+            
+            # Get subnet IDs
+            subnet_ids = [subnet for subnet in endpoint.get('SubnetIds', [])]
+            
+            # Get security group IDs
+            security_group_ids = [sg['GroupId'] for sg in endpoint.get('Groups', [])]
+            
+            # Get DNS entries
+            dns_entries = []
+            for dns_entry in endpoint.get('DnsEntries', []):
+                if dns_entry.get('DnsName'):
+                    dns_entries.append(dns_entry['DnsName'])
+            
+            # Get policy document (truncate if too long)
+            policy_doc = endpoint.get('PolicyDocument', 'N/A')
+            if policy_doc and len(policy_doc) > 100:
+                policy_doc = policy_doc[:100] + '...'
+            
+            # Get tags
+            endpoint_tags = endpoint.get('Tags', [])
+            
+            row_data = [
+                sanitize_excel_data(endpoint['VpcEndpointId']),
+                sanitize_excel_data(endpoint['VpcEndpointType']),
+                sanitize_excel_data(endpoint['ServiceName']),
+                sanitize_excel_data(endpoint['State']),
+                sanitize_excel_data(vpc_id),
+                sanitize_excel_data(vpc_info['name']),
+                sanitize_excel_data(vpc_info['cidr']),
+                sanitize_excel_data(', '.join(route_table_ids) if route_table_ids else 'N/A'),
+                sanitize_excel_data(', '.join(subnet_ids) if subnet_ids else 'N/A'),
+                sanitize_excel_data(', '.join(security_group_ids) if security_group_ids else 'N/A'),
+                sanitize_excel_data('Yes' if endpoint.get('PrivateDnsEnabled', False) else 'No'),
+                sanitize_excel_data(policy_doc),
+                sanitize_excel_data(endpoint.get('CreationTimestamp', 'N/A').strftime('%Y-%m-%d %H:%M:%S') if endpoint.get('CreationTimestamp') else 'N/A'),
+                sanitize_excel_data(', '.join(dns_entries) if dns_entries else 'N/A')
+            ] + get_tag_values(endpoint_tags)
+            
+            ws.append(row_data)
+    except Exception as e:
+        print(f"    Error: {e}")
+    
+    apply_header_style(ws, header_font, header_fill, header_alignment)
+
+def export_kms_keys(ws, kms, header_font, header_fill, header_alignment):
+    """Export KMS Keys"""
+    print("  - Exporting KMS Keys...")
+    
+    headers = [
+        'Key ID', 'Key ARN', 'Description', 'Key Usage', 'Key State',
+        'Key Manager', 'Customer Master Key Spec', 'Key Origin',
+        'Creation Date', 'Deletion Date', 'Multi-Region', 'Multi-Region Primary',
+        'Enabled', 'Key Rotation Status', 'Alias Names'
+    ] + get_tag_columns()
+    ws.append(headers)
+    
+    try:
+        # Get all KMS keys
+        paginator = kms.get_paginator('list_keys')
+        
+        for page in paginator.paginate():
+            for key_info in page['Keys']:
+                key_id = key_info['KeyId']
+                
+                try:
+                    # Get detailed key information
+                    key_details = kms.describe_key(KeyId=key_id)['KeyMetadata']
+                    
+                    # Only export customer-managed keys
+                    if key_details.get('KeyManager') == 'AWS':
+                        continue
+                    
+                    # Get key rotation status
+                    rotation_status = 'N/A'
+                    try:
+                        rotation_response = kms.get_key_rotation_status(KeyId=key_id)
+                        rotation_status = 'Enabled' if rotation_response.get('KeyRotationEnabled', False) else 'Disabled'
+                    except Exception:
+                        rotation_status = 'N/A'  # Key might not support rotation
+                    
+                    # Get key aliases
+                    aliases = []
+                    try:
+                        aliases_response = kms.list_aliases()
+                        for alias in aliases_response['Aliases']:
+                            if alias.get('TargetKeyId') == key_id:
+                                aliases.append(alias['AliasName'])
+                    except Exception:
+                        pass
+                    
+                    # Get tags
+                    key_tags = []
+                    try:
+                        tags_response = kms.list_resource_tags(KeyId=key_id)
+                        key_tags = tags_response.get('Tags', [])
+                    except Exception:
+                        pass
+                    
+                    row_data = [
+                        sanitize_excel_data(key_details['KeyId']),
+                        sanitize_excel_data(key_details['Arn']),
+                        sanitize_excel_data(key_details.get('Description', 'N/A')),
+                        sanitize_excel_data(key_details.get('KeyUsage', 'N/A')),
+                        sanitize_excel_data(key_details.get('KeyState', 'N/A')),
+                        sanitize_excel_data(key_details.get('KeyManager', 'N/A')),
+                        sanitize_excel_data(key_details.get('CustomerMasterKeySpec', 'N/A')),
+                        sanitize_excel_data(key_details.get('Origin', 'N/A')),
+                        sanitize_excel_data(key_details.get('CreationDate', 'N/A').strftime('%Y-%m-%d %H:%M:%S') if key_details.get('CreationDate') else 'N/A'),
+                        sanitize_excel_data(key_details.get('DeletionDate', 'N/A').strftime('%Y-%m-%d %H:%M:%S') if key_details.get('DeletionDate') else 'N/A'),
+                        sanitize_excel_data('Yes' if key_details.get('MultiRegion', False) else 'No'),
+                        sanitize_excel_data('Yes' if key_details.get('MultiRegionConfiguration', {}).get('MultiRegionKeyType') == 'PRIMARY' else 'No'),
+                        sanitize_excel_data('Yes' if key_details.get('Enabled', False) else 'No'),
+                        sanitize_excel_data(rotation_status),
+                        sanitize_excel_data(', '.join(aliases) if aliases else 'N/A')
+                    ] + get_tag_values(key_tags)
+                    
+                    ws.append(row_data)
+                    
+                except Exception as key_error:
+                    print(f"    Warning: Could not get details for key {key_id}: {key_error}")
+                    
+    except Exception as e:
+        print(f"    Error: {e}")
+    
+    apply_header_style(ws, header_font, header_fill, header_alignment)
+
 def export_with_error_handling(export_func, *args):
     """
     Wrapper function to handle errors in threaded exports
@@ -1479,6 +1816,7 @@ def export_aws_resources_for_profile(profile_name):
         glacier = session.client('glacier')
         cognito_idp = session.client('cognito-idp')
         cognito_identity = session.client('cognito-identity')
+        kms = session.client('kms')
         
         # Pre-create all worksheets (thread-safe)
         print("\n  - Creating worksheets...")
@@ -1488,6 +1826,7 @@ def export_aws_resources_for_profile(profile_name):
         ws_lambda = wb.create_sheet("Lambda Functions")
         ws_efs = wb.create_sheet("EFS File Systems")
         ws_ecs = wb.create_sheet("ECS Services")
+        ws_ecs_clusters = wb.create_sheet("ECS Clusters")
         ws_eks = wb.create_sheet("EKS Clusters")
         ws_elasticache = wb.create_sheet("ElastiCache")
         ws_mq = wb.create_sheet("Amazon MQ")
@@ -1501,6 +1840,8 @@ def export_aws_resources_for_profile(profile_name):
         ws_glacier = wb.create_sheet("Glacier Vaults")
         ws_cognito_users = wb.create_sheet("Cognito User Pools")
         ws_cognito_identity = wb.create_sheet("Cognito Identity Pools")
+        ws_vpc_endpoints = wb.create_sheet("VPC Endpoints")
+        ws_kms = wb.create_sheet("KMS Keys")
         ws_vpc = wb.create_sheet("VPC Summary")
         
         # Define export tasks - each tuple contains (function, worksheet, *args)
@@ -1511,6 +1852,7 @@ def export_aws_resources_for_profile(profile_name):
             (export_lambda_functions, ws_lambda, lambda_client, ec2, header_font, header_fill, header_alignment),
             (export_efs_filesystems, ws_efs, efs, header_font, header_fill, header_alignment),
             (export_ecs_services, ws_ecs, ecs, ec2, header_font, header_fill, header_alignment),
+            (export_ecs_clusters, ws_ecs_clusters, ecs, ec2, header_font, header_fill, header_alignment),
             (export_eks_clusters, ws_eks, eks, ec2, header_font, header_fill, header_alignment),
             (export_elasticache_clusters, ws_elasticache, elasticache, ec2, header_font, header_fill, header_alignment),
             (export_mq_brokers, ws_mq, mq, ec2, header_font, header_fill, header_alignment),
@@ -1524,6 +1866,8 @@ def export_aws_resources_for_profile(profile_name):
             (export_s3_glacier_vaults, ws_glacier, glacier, header_font, header_fill, header_alignment),
             (export_cognito_user_pools, ws_cognito_users, cognito_idp, header_font, header_fill, header_alignment),
             (export_cognito_identity_pools, ws_cognito_identity, cognito_identity, header_font, header_fill, header_alignment),
+            (export_vpc_endpoints, ws_vpc_endpoints, ec2, header_font, header_fill, header_alignment),
+            (export_kms_keys, ws_kms, kms, header_font, header_fill, header_alignment),
             (export_vpc_summary, ws_vpc, ec2, region, header_font, header_fill, header_alignment),
         ]
         
